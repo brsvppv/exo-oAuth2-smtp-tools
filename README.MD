@@ -115,6 +115,24 @@ iex (irm 'https://raw.githubusercontent.com/<owner>/<repo>/main/Scripts/Run-Inte
 
 ---
 
+### One-line remote examples (safe patterns)
+
+- Dry-run (remote script inspected by operator):
+```powershell
+iex (irm 'https://raw.githubusercontent.com/<owner>/<repo>/main/Scripts/Run-Interactive-Setup.ps1'); \
+  Run-Interactive-Setup -ConfigUrl 'https://raw.githubusercontent.com/<owner>/<repo>/main/config/smtp-app.example.json' -NonInteractive -DryRun
+```
+
+- Production run (only after DryRun validated; secrets handled via DPAPI or SecretManagement):
+```powershell
+iex (irm 'https://raw.githubusercontent.com/<owner>/<repo>/main/Scripts/Run-Interactive-Setup.ps1'); \
+  Run-Interactive-Setup -ConfigUrl 'https://raw.githubusercontent.com/<owner>/<repo>/main/config/smtp-app.example.json' -NonInteractive -SecretStorage DPAPI -ExportProtectedPath 'C:\secrets\smtp_secret.prot' -RotateSecret -Force -LogPath 'C:\logs\exo-setup.log'
+```
+
+**Security note:** Always inspect the remote script before running `iex`. Prefer download-then-inspect or run the pre-run helper (`Scripts/Check-PreRun.ps1`) to run lint/tests locally before invoking remote code.
+
+---
+
 ### Logging & Diagnostics
 
 - **Console output is always shown** to the operator so you can see progress and warnings.
