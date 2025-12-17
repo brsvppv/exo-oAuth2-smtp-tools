@@ -56,12 +56,12 @@ $ErrorActionPreference = 'Stop'
 
 function Write-Log([string]$Message, [ValidateSet('INFO','WARN','ERROR','VERBOSE')][string]$Level = 'INFO') {
     switch ($Level) {
-        'INFO'  { Write-Host "[INFO]  $Message" }
-        'WARN'  { Write-Host "[WARN]  $Message" -ForegroundColor Yellow }
-        'ERROR' { Write-Host "[ERROR] $Message" -ForegroundColor Red }
-        'VERBOSE' { Write-Host "[VERBOSE] $Message" }
+        'INFO'  { Write-Information -MessageData $Message -InformationAction Continue }
+        'WARN'  { Write-Warning $Message }
+        'ERROR' { Write-Error $Message }
+        'VERBOSE' { Write-Verbose $Message }
     }
-}
+} 
 
 # Fetch the main interactive script to a temp file and dot-source it
 $TempFile = Join-Path -Path ([IO.Path]::GetTempPath()) -ChildPath ("Run-Interactive-Setup-{0}.ps1" -f ([guid]::NewGuid().ToString()))

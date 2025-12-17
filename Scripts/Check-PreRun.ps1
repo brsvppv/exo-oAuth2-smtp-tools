@@ -21,11 +21,11 @@ $ErrorActionPreference = 'Stop'
 
 function Write-Log([string]$Message, [ValidateSet('INFO','WARN','ERROR')] [string]$Level = 'INFO') {
     switch ($Level) {
-        'INFO'  { Write-Host "[INFO]  $Message" }
-        'WARN'  { Write-Host "[WARN]  $Message" -ForegroundColor Yellow }
-        'ERROR' { Write-Host "[ERROR] $Message" -ForegroundColor Red }
+        'INFO'  { Write-Information -MessageData $Message -InformationAction Continue }
+        'WARN'  { Write-Warning $Message }
+        'ERROR' { Write-Error $Message }
     }
-}
+} 
 
 # 1) Run PSScriptAnalyzer (if not skipped)
 $analyzerRules = @('PSAvoidUsingWriteHost','PSUseApprovedVerbs','PSAvoidUsingConvertToSecureStringWithPlainText','PSAvoidUsingPlainTextForSecrets')

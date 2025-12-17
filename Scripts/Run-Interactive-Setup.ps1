@@ -10,6 +10,21 @@
 USAGE
   iex (irm 'https://raw.githubusercontent.com/<owner>/<repo>/main/Scripts/Run-Interactive-Setup.ps1')
 
+LOGGING NOTE
+  - Console output is always displayed to the operator so you can follow progress and warnings in real time.
+  - File logging is optional: pass `-LogPath <path>` to append timestamped logs to a file. Secrets are redacted
+    before being written to disk and the one-time client secret is shown on-screen only when applicable.
+  - Command tracing is opt-in: pass `-TraceCommands` to enable extra (VERBOSE) trace entries.
+
+EXAMPLES
+  # Console-only dry-run (default)
+  iex (irm 'https://raw.githubusercontent.com/<owner>/<repo>/main/Scripts/Run-Interactive-Setup.ps1') ; \
+    Run-Interactive-Setup -ConfigPath ./config/smtp-app.json -NonInteractive -DryRun
+
+  # Console + file logging
+  iex (irm 'https://raw.githubusercontent.com/<owner>/<repo>/main/Scripts/Run-Interactive-Setup.ps1') ; \
+    Run-Interactive-Setup -ConfigPath ./config/smtp-app.json -NonInteractive -LogPath 'C:\logs\exo-setup.log'
+
 NOTE
   - For security, prefer download-then-inspect. This script will *ask* before installing modules
     or writing secret files.
@@ -71,6 +86,33 @@ function Read-YesNo([string]$msg, [bool]$defaultYes = $true) {
     return $yn.ToLower().StartsWith('y')
 } 
 
+function Get-Config([string]$Path) {
+    # Support local path, http(s) URL, or raw JSON/YAML string
+    if ($Path -match '^https?://') {
+        try {
+            $raw = Invoke-RestMethod -Uri $Path -UseBasicParsing -ErrorAction Stop
+            if ($raw -is [System.Management.Automation.PSCustomObject] -or $raw -is [hashtable]) { $raw = $raw | ConvertTo-Json -Depth 10 }
+        } catch {
+            throw "Failed to download config from $Path : $($_.Exception.Message)"
+        }
+    } elseif (Test-Path $Path) {
+        $raw = Get-Content -Path $Path -Raw
+    } elseif ($Path.TrimStart() -match '^[\[{]') {
+        # Treat Path as raw JSON/YAML content passed directly
+        $raw = $Path
+    } else {
+        throw "Config file not found: $Path"
+    }
+
+    if ($Path -match '\.ya?ml$') {
+        if (-not (Get-Module -ListAvailable powershell-yaml)) { Install-Module -Name powershell-yaml -Scope CurrentUser -Force -AllowClobber }
+        Import-Module powershell-yaml -ErrorAction Stop
+        return ConvertFrom-Yaml $raw
+    } else {
+        try { return $raw | ConvertFrom-Json } catch { throw "Config is not valid JSON or YAML: $($_.Exception.Message)" }
+    }
+} 
+
 function Install-ModuleWithConsent([string]$name) {
     if (-not (Get-Module -ListAvailable -Name $name)) {
         if (Read-YesNo "Module '$name' is not installed. Install now?" $true) {
@@ -114,6 +156,13 @@ function Start-InteractiveSetup {
     Install-ModuleWithConsent -name 'Microsoft.Graph'
     Install-ModuleWithConsent -name 'ExchangeOnlineManagement' 
 
+    # Ensure we have the implementation available so helper functions like Get-ExoConfig are present
+    if (Get-Module -ListAvailable -Name ExoOauthSmtp) { Import-Module ExoOauthSmtp -ErrorAction Stop } else {
+        # Try to dot-source v3 if available
+        $v3 = Join-Path -Path $PSScriptRoot -ChildPath 'New-ExoOauthSmtpAppIdentity_v3.ps1'
+        if (Test-Path $v3) { . $v3 } else { Write-Error "Cannot find module or v3 script. Please ensure 'ExoOauthSmtp' module or 'New-ExoOauthSmtpAppIdentity_v3.ps1' is present."; return }
+    }
+
     # Load existing example config if available
     $existing = if (Test-Path (Join-Path -Path $PSScriptRoot -ChildPath '..\config\smtp-app.json')) { Get-Content -Raw -Path (Join-Path -Path $PSScriptRoot -ChildPath '..\config\smtp-app.json') | ConvertFrom-Json } else { $null }
 
@@ -121,9 +170,9 @@ function Start-InteractiveSetup {
     if ($NonInteractive -and ($ConfigPath -or $ConfigUrl -or ($DisplayName -and $TenantId))) {
         # prefer config file/url
         if ($ConfigPath) {
-            $cfg = Get-ExoConfig -Path $ConfigPath
+            $cfg = Load-Config -Path $ConfigPath
         } elseif ($ConfigUrl) {
-            $cfg = Get-ExoConfig -Path $ConfigUrl
+            $cfg = Load-Config -Path $ConfigUrl
         } else {
             $cfg = @{ DisplayName = $DisplayName; TenantId = $TenantId; Mailboxes = $Mailboxes }
         }
@@ -154,15 +203,15 @@ function Start-InteractiveSetup {
             '1' {
                 $configPath = Read-Host "Enter local config path (relative or absolute)" -Default './config/smtp-app.json'
                 if (-not (Test-Path $configPath)) { Write-Log "Config not found at $configPath" 'ERROR'; return }
-                $cfg = Get-ExoConfig -Path $configPath
-                $DisplayName = $cfg.DisplayName
-                $TenantId = $cfg.TenantId
-                $Mailboxes = $cfg.Mailboxes
+                        $cfg = Get-Config -Path $configPath
+                    $DisplayName = $cfg.DisplayName
+                    $TenantId = $cfg.TenantId
+                    $Mailboxes = $cfg.Mailboxes
             }
             '2' {
                 $configUrl = Read-Host "Enter config URL (http(s) raw JSON/YAML)"
                 try {
-                    $cfg = Get-ExoConfig -Path $configUrl
+                    $cfg = Get-Config -Path $configUrl
                 } catch {
                     Write-Log "Failed to download/parse config: $($_.Exception.Message)" 'ERROR'; return
                 }
@@ -175,9 +224,13 @@ function Start-InteractiveSetup {
                 $Mailboxes = $cfg.Mailboxes
             }
             default {
-                $DisplayName = Read-Host "Display Name for App (e.g. 'Organization SMTP Service')" -Default ($existing.DisplayName)
-                $TenantId = Read-Host "Tenant ID (GUID)" -Default ($existing.TenantId)
-                $mailboxesRaw = Read-Host "Comma-separated list of mailbox addresses to validate/assign (e.g. no-reply@contoso.com,notify@contoso.com)" -Default (($existing.Mailboxes -join ',') -replace '\s','')
+                $defaultDisplay = if ($existing -and $existing.DisplayName) { $existing.DisplayName } else { '' }
+                $defaultTenant = if ($existing -and $existing.TenantId) { $existing.TenantId } else { '' }
+                $defaultMailboxes = if ($existing -and $existing.Mailboxes) { ($existing.Mailboxes -join ',') -replace '\s','' } else { '' }
+
+                $DisplayName = Read-Host "Display Name for App (e.g. 'Organization SMTP Service')" -Default $defaultDisplay
+                $TenantId = Read-Host "Tenant ID (GUID)" -Default $defaultTenant
+                $mailboxesRaw = Read-Host "Comma-separated list of mailbox addresses to validate/assign (e.g. no-reply@contoso.com,notify@contoso.com)" -Default $defaultMailboxes
                 $Mailboxes = if ($mailboxesRaw) { $mailboxesRaw.Split(',') | ForEach-Object { $_.Trim() } } else { @() }
                 # create a temp config file to pass to provisioning for improved traceability
                 $tmp = Join-Path -Path ([IO.Path]::GetTempPath()) -ChildPath ("smtp-app-{0}.json" -f ([guid]::NewGuid().ToString()))
@@ -187,8 +240,14 @@ function Start-InteractiveSetup {
         }
     } else {
         # Non-interactive but ensure required items are present
-        if ($ConfigPath) { $cfg = Load-ExoConfig -Path $ConfigPath; $DisplayName = $cfg.DisplayName; $TenantId = $cfg.TenantId; $Mailboxes = $cfg.Mailboxes; }
-        elseif ($ConfigUrl) { $cfg = Load-ExoConfig -Path $ConfigUrl; $DisplayName = $cfg.DisplayName; $TenantId = $cfg.TenantId; $Mailboxes = $cfg.Mailboxes; $tmp = [IO.Path]::GetTempFileName() + '.json'; $cfg | ConvertTo-Json -Depth 10 | Out-File -FilePath $tmp -Encoding utf8; $configPath = $tmp }
+        if ($ConfigPath) {
+            $cfg = Load-Config -Path $ConfigPath; $DisplayName = $cfg.DisplayName; $TenantId = $cfg.TenantId; $Mailboxes = $cfg.Mailboxes
+            if ($NonInteractive -and -not $TenantId) { Throw "Config at $ConfigPath must include TenantId in NonInteractive mode." }
+        }
+        elseif ($ConfigUrl) {
+            $cfg = Load-Config -Path $ConfigUrl; $DisplayName = $cfg.DisplayName; $TenantId = $cfg.TenantId; $Mailboxes = $cfg.Mailboxes; $tmp = [IO.Path]::GetTempFileName() + '.json'; $cfg | ConvertTo-Json -Depth 10 | Out-File -FilePath $tmp -Encoding utf8; $configPath = $tmp
+            if ($NonInteractive -and -not $TenantId) { Throw "Config at $ConfigUrl must include TenantId in NonInteractive mode." }
+        }
         else { if (-not ($DisplayName -and $TenantId)) { Throw 'In NonInteractive mode you must provide -ConfigPath, -ConfigUrl, or supply -DisplayName and -TenantId parameters.' } }
     }
 
@@ -276,12 +335,7 @@ if (-not (Read-YesNo "Proceed with provisioning?" $true)) { Write-Log "Cancelled
         if (-not $NonInteractive -and -not (Read-YesNo "Continue anyway?" $false)) { Write-Log "Cancelled by user." 'WARN'; return }
     }
 
-# Ensure we have the implementation available
-if (Get-Module -ListAvailable -Name ExoOauthSmtp) { Import-Module ExoOauthSmtp -ErrorAction Stop } else {
-    # Try to dot-source v3 if available
-    $v3 = Join-Path -Path $PSScriptRoot -ChildPath 'New-ExoOauthSmtpAppIdentity_v3.ps1'
-    if (Test-Path $v3) { . $v3 } else { Write-Error "Cannot find module or v3 script. Please ensure 'ExoOauthSmtp' module or 'New-ExoOauthSmtpAppIdentity_v3.ps1' is present."; return }
-}
+
 
 try {
     # If we have a configPath (local temp or user-provided), pass it in to prefer file-driven configuration
