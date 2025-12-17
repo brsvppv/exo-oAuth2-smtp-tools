@@ -153,6 +153,16 @@ iex (irm 'https://raw.githubusercontent.com/<owner>/<repo>/main/Scripts/Run-Inte
 
 See `CONTRIBUTING.md` for instructions to run these checks locally and for guidance on correcting common violations.
 
+### Running the pre-run helper locally
+
+We provide a small helper that runs the same checks used in CI (PSScriptAnalyzer, gitleaks, and unit tests). Run it locally before invoking `iex` on the remote script:
+
+```powershell
+pwsh -File .\Scripts\Check-PreRun.ps1
+```
+
+If you need to skip gitleaks or the analyzer while testing locally, pass the switches `-SkipGitleaks` or `-SkipAnalyzer` respectively.
+
 Notes:
 - `-Force` allows the script to auto-install SecretManagement modules in non-interactive mode when required.
 - `-SecretStorage` accepts: `ShowOnce` (default), `DPAPI`, `SecretStore`, or `None`.
