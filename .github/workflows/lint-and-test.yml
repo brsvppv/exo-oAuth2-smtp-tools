@@ -23,14 +23,25 @@ jobs:
       - name: Install PSScriptAnalyzer
         run: |
           pwsh -Command "Install-Module -Name PSScriptAnalyzer -Force -Scope CurrentUser"
-      - name: Run PSScriptAnalyzer and fail on disallowed rules
+      - name: Run PSScriptAnalyzer and write JSON report
         run: |
           pwsh -NoProfile -Command "\
             $findings = Invoke-ScriptAnalyzer -Path . -Recurse -Severity Warning,Error;\
+            $findings | ConvertTo-Json -Depth 10 | Out-File analyzer-report.json -Encoding utf8;\
+            if ($findings -and $findings.Count -gt 0) { $findings | Select-Object FileName, Line, RuleName, Severity, Message | Format-Table -AutoSize } else { Write-Host 'No PSScriptAnalyzer findings.' }"
+      - name: Upload PSScriptAnalyzer report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: psscriptanalyzer-report
+          path: analyzer-report.json
+      - name: Fail on disallowed PSScriptAnalyzer rules
+        run: |
+          pwsh -NoProfile -Command "\
+            $findings = if (Test-Path analyzer-report.json) { Get-Content -Raw -Path analyzer-report.json | ConvertFrom-Json } else { Invoke-ScriptAnalyzer -Path . -Recurse -Severity Warning,Error };\
             $bad = $findings | Where-Object { $_.RuleName -in @('PSAvoidUsingWriteHost','PSUseApprovedVerbs','PSAvoidUsingConvertToSecureStringWithPlainText','PSAvoidUsingPlainTextForSecrets') };\
             if ($bad) { $bad | Select-Object FileName, Line, RuleName, Severity, Message | Format-Table -AutoSize; Write-Host 'Disallowed PSScriptAnalyzer rules detected.'; exit 1 }\
-            else { Write-Host 'No disallowed PSScriptAnalyzer rules found.' }"
-      - name: Run pre-run helper (Check-PreRun)
+            else { Write-Host 'No disallowed PSScriptAnalyzer rules found.' }"      - name: Run pre-run helper (Check-PreRun)
         run: |
           pwsh -NoProfile -File .\Scripts\Check-PreRun.ps1
   test:

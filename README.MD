@@ -1,5 +1,9 @@
 # exo-oauth2-smtp-tools
 
+[![Lint & Test](https://github.com/<owner>/<repo>/actions/workflows/lint-and-test.yml/badge.svg)](https://github.com/<owner>/<repo>/actions/workflows/lint-and-test.yml) [![Secret Scan](https://github.com/<owner>/<repo>/actions/workflows/secret-scan.yml/badge.svg)](https://github.com/<owner>/<repo>/actions/workflows/secret-scan.yml)
+
+> Replace `<owner>/<repo>` in the badge URLs with your repository path to enable live badges.
+
 A collection of automation scripts (PowerShell & Python) to configure, validate, and decommission **OAuth 2.0 Client Credentials Flow** for sending emails via Microsoft Exchange Online (EXO).
 
 These tools replace Basic Authentication (Legacy Auth) for applications and services like **Dynamics 365 Business Central**.
