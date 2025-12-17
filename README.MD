@@ -123,8 +123,8 @@ iex (irm 'https://raw.githubusercontent.com/<owner>/<repo>/main/Scripts/Run-Inte
 
 - Dry-run (remote script inspected by operator):
 ```powershell
-iex (irm 'https://raw.githubusercontent.com/<owner>/<repo>/main/Scripts/Run-Interactive-Setup.ps1'); \
-  Run-Interactive-Setup -ConfigUrl 'https://raw.githubusercontent.com/<owner>/<repo>/main/config/smtp-app.example.json' -NonInteractive -DryRun
+iex (irm 'https://raw.githubusercontent.com/<owner>/<repo>/main/Scripts/quick-run.ps1'); \
+  Quick-Run -TenantId '<tenant-guid>' -DisplayName 'My SMTP App' -Mailboxes 'no-reply@contoso.com,notify@contoso.com' -DryRun
 ```
 
 - Production run (only after DryRun validated; secrets handled via DPAPI or SecretManagement):
