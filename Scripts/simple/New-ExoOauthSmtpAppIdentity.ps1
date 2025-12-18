@@ -1,149 +1,128 @@
-﻿<#
-A simple, single-file provisioning helper function designed for quick remote runs via `iex (irm ...)`.
-Provides a Plan/DryRun mode that accepts JSON (string or file path) and prints the exact planned steps to the console.
-Optionally, it can perform provisioning (`-Perform`) if the required modules are available or with `-AutoInstall` consent.
-#>
+﻿# --------------------------------------------------------------------------------
+# CONFIGURATION
+# --------------------------------------------------------------------------------
+$DisplayName = "Organization SMTP Service"
+$SecretName  = "Organization SMTP Secret"
+$YearsValid  = 2
+# List all mailboxes that need to send mail (No-Reply + Shared Mailboxes)
+$Mailboxes = @(
+    "no-reply@example.com", #email user mailbox
+    "info@example.com",  #email shared mailbox
+    "notify@example.com"#email shared mailbox
+)
 
-function Invoke-ExoSimpleProvision {
-    [CmdletBinding()]
-    Param(
-        [Parameter(Mandatory=$false, HelpMessage='Path to a JSON file or inline JSON text')]
-        [string]$Config,
-        [Parameter(Mandatory=$false, HelpMessage='If set, the function will only display the planned actions (default)')]
-        [switch]$DryRun = $true,
-        [Parameter(Mandatory=$false, HelpMessage='When set, attempt to perform the provisioning actions')]
-        [switch]$Perform,
-        [Parameter(Mandatory=$false, HelpMessage='Auto-install missing modules when performing')]
-        [switch]$AutoInstall
-    )
-
-    function Write-Log([string]$Message, [ValidateSet('INFO','WARN','ERROR','VERBOSE')][string]$Level = 'INFO') {
-        switch ($Level) {
-            'INFO'  { Write-Information -MessageData $Message -InformationAction Continue }
-            'WARN'  { Write-Warning $Message }
-            'ERROR' { Write-Error $Message }
-            'VERBOSE' { Write-Verbose $Message }
-        }
-    }
-
-    if (-not $Config) {
-        throw 'Please provide configuration via -Config (file path or JSON string).'
-    }
-
-    # Load config: if file exists treat as path, else treat as raw JSON
-    if (Test-Path $Config) {
-        $raw = Get-Content -Path $Config -Raw
-    } elseif ($Config.TrimStart() -match '^[\[{]') {
-        $raw = $Config
-    } else {
-        throw "Config not found as file and does not appear to be JSON: $Config"
-    }
-
-    try {
-        $c = $raw | ConvertFrom-Json
-    } catch {
-        throw "Config is not valid JSON: $($_.Exception.Message)"
-    }
-
-    # Minimal validation
-    if (-not $c.DisplayName) { throw 'Config missing DisplayName' }
-    if (-not $c.TenantId) { Write-Log 'Warning: Config missing TenantId; certain checks may be skipped in DryRun.' 'WARN' }
-
-    $displayName = $c.DisplayName
-    $tenantId = $c.TenantId
-    $mailboxes = if ($c.Mailboxes) { $c.Mailboxes } else { @() }
-    $yearsValid = if ($c.YearsValid) { $c.YearsValid } else { 2 }
-    $secretName = if ($c.SecretName) { $c.SecretName } else { "$displayName Secret" }
-
-    # Display Plan
-    Write-Log "Provisioning Plan:" 'INFO'
-    Write-Log "  DisplayName: $displayName" 'INFO'
-    if ($tenantId) { Write-Log "  TenantId:    $tenantId" 'INFO' }
-    Write-Log "  Mailboxes:   $($mailboxes -join ', ')" 'INFO'
-    Write-Log "  SecretName:  $secretName" 'INFO'
-    Write-Log "  Secret valid years: $yearsValid" 'INFO'
-    Write-Log "  Actions (in order):" 'INFO'
-    Write-Log "    1) Ensure App Registration '$displayName' exists (create if missing)" 'INFO'
-    Write-Log "    2) Generate client secret (one-time) named '$secretName' (valid for $yearsValid years)" 'INFO'
-    Write-Log "    3) Ensure Service Principal (Enterprise App) exists" 'INFO'
-    Write-Log "    4) Register Service Principal in Exchange and grant mailbox permissions" 'INFO'
-
-    if ($DryRun) {
-        Write-Log 'DryRun mode: no changes will be made. Use -Perform to execute provisioning actions.' 'WARN'
-        return @{ DisplayName = $displayName; TenantId = $tenantId; Mailboxes = $mailboxes; SecretName = $secretName }
-    }
-
-    if ($Perform) {
-        Write-Log 'Perform mode: attempting to perform provisioning. Validating modules...' 'INFO'
-        # Check modules
-        $missing = @()
-        if (-not (Get-Module -ListAvailable -Name Microsoft.Graph -ErrorAction SilentlyContinue)) { $missing += 'Microsoft.Graph' }
-        if (-not (Get-Module -ListAvailable -Name ExchangeOnlineManagement -ErrorAction SilentlyContinue)) { $missing += 'ExchangeOnlineManagement' }
-
-        if ($missing.Count -gt 0) {
-            Write-Log "Missing modules: $($missing -join ', ')" 'WARN'
-            if ($AutoInstall) {
-                foreach ($m in $missing) {
-                    Write-Log "Installing module $m..." 'INFO'
-                    Install-Module -Name $m -Scope CurrentUser -Force -AllowClobber
-                }
-            } else {
-                throw "Required modules missing: $($missing -join ', '). Rerun with -AutoInstall or install them manually."
-            }
-        }
-
-        # Connect to Graph
-        Write-Log 'Connecting to Microsoft Graph...' 'INFO'
-        Connect-MgGraph -Scopes 'Application.ReadWrite.All','Directory.Read.All'
-
-        # Create or find App
-        $app = Get-MgApplication -Filter "displayName eq '$displayName'" -ErrorAction SilentlyContinue
-        if (-not $app) {
-            Write-Log "Creating application '$displayName'..." 'INFO'
-            $app = New-MgApplication -DisplayName $displayName
-            Write-Log "Application created: $($app.Id)" 'INFO'
-        } else { Write-Log "Application already exists: $($app.Id)" 'INFO' }
-
-        # Create secret
-        Write-Log 'Creating client secret...' 'INFO'
-        $end = (Get-Date).AddYears($yearsValid)
-        $secret = New-MgApplicationPassword -ApplicationId $app.Id -DisplayName $secretName -EndDateTime $end
-        $clientSecret = $secret.SecretText
-        Write-Log 'Client secret created (copy it now; it will not be shown again).' 'WARN'
-        Write-Log "ONE-TIME CLIENT SECRET: $clientSecret" 'WARN'
-
-        # Ensure Service Principal
-        $sp = Get-MgServicePrincipal -Filter "AppId eq '$($app.AppId)'" -ErrorAction SilentlyContinue
-        if (-not $sp) {
-            Write-Log 'Creating Service Principal...' 'INFO'
-            $sp = New-MgServicePrincipal -AppId $app.AppId
-            Start-Sleep -Seconds 10
-        } else { Write-Log "Service Principal exists: $($sp.Id)" 'INFO' }
-
-        # Register in Exchange & assign permissions
-        Write-Log 'Connecting to Exchange Online...' 'INFO'
-        Connect-ExchangeOnline
-        try {
-            $ex = Get-ServicePrincipal -Identity $sp.Id -ErrorAction Stop
-            Write-Log 'Service Principal already registered in Exchange.' 'INFO'
-        } catch {
-            Write-Log 'Registering Service Principal in Exchange...' 'INFO'
-            New-ServicePrincipal -AppId $app.AppId -ServiceId $sp.Id -DisplayName $displayName
-        }
-
-        foreach ($m in $mailboxes) {
-            Write-Log "Assigning permissions for $m..." 'INFO'
-            Add-MailboxPermission -Identity $m -User $sp.Id -AccessRights FullAccess -ErrorAction SilentlyContinue
-        }
-
-        Write-Log 'Provisioning complete.' 'INFO'
-        return @{ Application = $app; ServicePrincipal = $sp; ClientSecret = $clientSecret }
+# --------------------------------------------------------------------------------
+# MODULE CHECK & CONNECTION
+# --------------------------------------------------------------------------------
+function Write-Log([string]$Message, [ValidateSet('INFO','WARN','ERROR','VERBOSE')][string]$Level = 'INFO') {
+    switch ($Level) {
+        'INFO'  { Write-Information -MessageData $Message -InformationAction Continue }
+        'WARN'  { Write-Warning $Message }
+        'ERROR' { Write-Error $Message }
+        'VERBOSE' { Write-Verbose $Message }
     }
 }
 
-# If the script is invoked directly, show usage
-if ($MyInvocation.InvocationName -ne '.') {
-    Write-Information "Usage examples:`n`n`nInvoke-ExoSimpleProvision -Config './config/smtp-app.example.json' -DryRun`nInvoke-ExoSimpleProvision -Config '{`"DisplayName`":`"My App`",`"TenantId`":`"<tenant-id>`",`"Mailboxes`":[`"no-reply@contoso.com`"]}' -Perform -AutoInstall`n" -InformationAction Continue
+Write-Log "Checking modules..." 'INFO'
+if (-not (Get-Module -ListAvailable Microsoft.Graph.Applications)) { Install-Module Microsoft.Graph.Applications -Scope CurrentUser -Force }
+if (-not (Get-Module -ListAvailable ExchangeOnlineManagement)) { Install-Module ExchangeOnlineManagement -Scope CurrentUser -Force }
+
+Write-Log "Connecting to Microsoft Graph (Login as Global Admin)..." 'INFO'
+# We need permissions to Create Apps, Secrets, and read Service Principals
+Connect-MgGraph -Scopes 'Application.ReadWrite.All', 'Directory.Read.All'
+
+# --------------------------------------------------------------------------------
+# STEP 1: AZURE APP REGISTRATION
+# --------------------------------------------------------------------------------
+Write-Log "Checking for existing App Registration..." 'INFO'
+$App = Get-MgApplication -Filter "DisplayName eq '$DisplayName'" -ErrorAction SilentlyContinue
+
+if ($null -eq $App) {
+    Write-Log "Creating NEW App Registration: $DisplayName" 'INFO'
+    $App = New-MgApplication -DisplayName $DisplayName -SignInAudience "AzureADMyOrg"
+} else {
+    Write-Log "Found existing App Registration." 'WARN'
 }
+
+$ClientId = $App.AppId
+$AppObjectId = $App.Id
+
+Write-Log "   - App ID (Client ID): $ClientId" 'INFO'
+Write-Log "   - App Reg Object ID:  $AppObjectId" 'INFO'
+
+# --------------------------------------------------------------------------------
+# STEP 2: GENERATE CLIENT SECRET
+# --------------------------------------------------------------------------------
+Write-Log "Generating Client Secret..." 'INFO'
+$passwordCred = @{
+    displayName = $SecretName
+    endDateTime = (Get-Date).AddYears($YearsValid)
+}
+$SecretInfo = Add-MgApplicationPassword -ApplicationId $AppObjectId -PasswordCredential $passwordCred
+$ClientSecret = $SecretInfo.SecretText
+
+# --------------------------------------------------------------------------------
+# STEP 3: ENSURE SERVICE PRINCIPAL (ENTERPRISE APP) EXISTS
+# --------------------------------------------------------------------------------
+# This is the "Enterprise App" Object ID required by Exchange (NOT the App Reg ID)
+Write-Log "Checking for Enterprise App (Service Principal)..." 'INFO'
+$ServicePrincipal = Get-MgServicePrincipal -Filter "AppId eq '$ClientId'" -ErrorAction SilentlyContinue
+
+if ($null -eq $ServicePrincipal) {
+    Write-Log "Creating Service Principal in Enterprise Apps..." 'INFO'
+    $ServicePrincipal = New-MgServicePrincipal -AppId $ClientId
+    # Sleep briefly to allow propagation
+    Start-Sleep -Seconds 15 
+}
+
+$ServiceId = $ServicePrincipal.Id
+Write-Log "   - Service Principal Object ID: $ServiceId" 'INFO'
+
+# --------------------------------------------------------------------------------
+# STEP 4: EXCHANGE ONLINE CONFIGURATION
+# --------------------------------------------------------------------------------
+Write-Log "Connecting to Exchange Online..." 'INFO'
+Connect-ExchangeOnline
+
+Write-Log "Registering Service Principal in Exchange..." 'INFO'
+# Check if it is already registered to avoid errors
+try {
+    $ExchSP = Get-ServicePrincipal -Identity $ServiceId -ErrorAction Stop
+    Write-Log "Service Principal already registered in Exchange." 'WARN'
+} catch {
+    Write-Log "Registering new Service Principal in Exchange..." 'INFO'
+    New-ServicePrincipal -AppId $ClientId -ServiceId $ServiceId -DisplayName $DisplayName
+}
+
+# --------------------------------------------------------------------------------
+# STEP 5: ASSIGN MAILBOX PERMISSIONS
+# --------------------------------------------------------------------------------
+Write-Log "Assigning Permissions to Mailboxes..." 'INFO'
+
+foreach ($Email in $Mailboxes) {
+    Write-Log "   Processing $Email..." 'INFO'
+    # Add permission (silently continue if already exists)
+    Add-MailboxPermission -Identity $Email -User $ServiceId -AccessRights FullAccess -ErrorAction SilentlyContinue
+    Write-Log "   - Access Granted." 'INFO'
+}
+
+# --------------------------------------------------------------------------------
+# FINAL OUTPUT
+# --------------------------------------------------------------------------------
+Clear-Host
+Write-Information -MessageData "================================================================" -InformationAction Continue
+Write-Information -MessageData " SETUP COMPLETE " -InformationAction Continue
+Write-Information -MessageData "================================================================" -InformationAction Continue
+Write-Information -MessageData "Use these credentials in Business Central:" -InformationAction Continue
+Write-Information -MessageData "" -InformationAction Continue
+Write-Information -MessageData "Authentication: OAuth 2.0" -InformationAction Continue
+Write-Information -MessageData "Client ID:      $ClientId" -InformationAction Continue
+Write-Warning "Client Secret:  $ClientSecret"
+Write-Information -MessageData "Tenant ID:      $($App.PublisherDomain)" -InformationAction Continue
+Write-Information -MessageData "" -InformationAction Continue
+Write-Warning "IMPORTANT: Copy the Client Secret NOW. You cannot see it again."
+Write-Information -MessageData "================================================================" -InformationAction Continue
+Write-Log "Final Step Check: Go to Azure Portal > App Registrations > '$DisplayName'" 'WARN'
+Write-Log "Ensure 'API Permissions' > 'SMTP.SendAsApp' is added and Admin Consent is clicked." 'WARN'
 
 

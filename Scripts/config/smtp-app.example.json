@@ -1,0 +1,23 @@
+{
+  "DisplayName": "Organization SMTP Service",
+  "TenantID": "",
+  "ClientId": "",
+  "ClientSecret": "",
+  "SecretName": "Organization SMTP Secret",
+  "YearsValid": 2,
+  "Mailboxes": [
+    "no-reply@example.com",
+    "info@example.com",
+    "notify@example.com"
+  ],
+  "MailboxPermissionMethod": "AddMailboxPermission",
+  "SecurityGroupForMailboxes": "",
+  "AutoInstallModules": false,
+  "UseSecretManagement": false,
+  "ExportSecretPath": "",
+  "ExportProtectedPath": "",
+  "RotateSecret": false,
+  "ShowSecret": false,
+  "NonInteractive": false,
+  "ExchangeCertificateThumbprint": ""
+}

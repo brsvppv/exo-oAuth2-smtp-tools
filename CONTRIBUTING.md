@@ -32,7 +32,7 @@ If the report contains results, remove secrets and rotate them if necessary befo
 
 > The PR pre-check job (`precheck`) will run `gitleaks` and upload `gitleaks-prerun-report` as an artifact when it runs on PRs.
 ## Logging & Diagnostics (note for contributors)
-- `Run-Interactive-Setup.ps1` supports optional `-LogPath` and `-TraceCommands`. Console output is always shown.
+- `Invoke-InteractiveSetup.ps1` supports optional `-LogPath` and `-TraceCommands`. Console output is always shown.
 - Secrets are redacted and never written to log files by default.
 
 If you'd like to add more checks to CI or stricter rules, open an issue or submit a PR describing the rationale and proposed rules.

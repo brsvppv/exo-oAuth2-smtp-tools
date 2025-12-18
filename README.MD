@@ -102,19 +102,19 @@ New-ExoOauthSmtpAppIdentity -ConfigPath ./config/smtp-app.json -NonInteractive
 
 Interactive (prompts; recommended for first run):
 ```powershell
-iex (irm 'https://raw.githubusercontent.com/<owner>/<repo>/main/Scripts/Run-Interactive-Setup.ps1')
+iex (irm 'https://raw.githubusercontent.com/<owner>/<repo>/main/Scripts/Invoke-InteractiveSetup.ps1')
 ```
 
-Non-interactive (automation; requires config URL or path and explicit choices):
+non-interactive (automation; requires config URL or path and explicit choices):
 ```powershell
-iex (irm 'https://raw.githubusercontent.com/<owner>/<repo>/main/Scripts/Run-Interactive-Setup.ps1') ; \
-  Run-Interactive-Setup -ConfigUrl 'https://raw.githubusercontent.com/<owner>/<repo>/main/config/smtp-app.example.json' -NonInteractive -SecretStorage DPAPI -ExportProtectedPath 'C:\secrets\smtp_secret.prot' -RotateSecret -Force
+iex (irm 'https://raw.githubusercontent.com/<owner>/<repo>/main/Scripts/Invoke-InteractiveSetup.ps1') ; \
+  Invoke-InteractiveSetup -ConfigUrl 'https://raw.githubusercontent.com/<owner>/<repo>/main/config/smtp-app.example.json' -NonInteractive -SecretStorage DPAPI -ExportProtectedPath 'C:\secrets\smtp_secret.prot' -RotateSecret -Force
 ```
 
 Dry run example (validate config and mailboxes only):
 ```powershell
-iex (irm 'https://raw.githubusercontent.com/<owner>/<repo>/main/Scripts/Run-Interactive-Setup.ps1') ; \
-  Run-Interactive-Setup -ConfigPath ./config/smtp-app.json -NonInteractive -DryRun
+iex (irm 'https://raw.githubusercontent.com/<owner>/<repo>/main/Scripts/Invoke-InteractiveSetup.ps1') ; \
+  Invoke-InteractiveSetup -ConfigPath ./config/smtp-app.json -NonInteractive -DryRun
 ```
 
 ---
@@ -123,14 +123,14 @@ iex (irm 'https://raw.githubusercontent.com/<owner>/<repo>/main/Scripts/Run-Inte
 
 - Dry-run (remote script inspected by operator):
 ```powershell
-iex (irm 'https://raw.githubusercontent.com/<owner>/<repo>/main/Scripts/quick-run.ps1'); \
-  Quick-Run -TenantId '<tenant-guid>' -DisplayName 'My SMTP App' -Mailboxes 'no-reply@contoso.com,notify@contoso.com' -DryRun
+iex (irm 'https://raw.githubusercontent.com/<owner>/<repo>/main/Scripts/Invoke-QuickRun.ps1'); \
+  Invoke-QuickRun -TenantId '<tenant-guid>' -DisplayName 'My SMTP App' -Mailboxes 'no-reply@contoso.com,notify@contoso.com' -DryRun
 ```
 
 - Production run (only after DryRun validated; secrets handled via DPAPI or SecretManagement):
 ```powershell
-iex (irm 'https://raw.githubusercontent.com/<owner>/<repo>/main/Scripts/Run-Interactive-Setup.ps1'); \
-  Run-Interactive-Setup -ConfigUrl 'https://raw.githubusercontent.com/<owner>/<repo>/main/config/smtp-app.example.json' -NonInteractive -SecretStorage DPAPI -ExportProtectedPath 'C:\secrets\smtp_secret.prot' -RotateSecret -Force -LogPath 'C:\logs\exo-setup.log'
+iex (irm 'https://raw.githubusercontent.com/<owner>/<repo>/main/Scripts/Invoke-InteractiveSetup.ps1'); \
+  Invoke-InteractiveSetup -ConfigUrl 'https://raw.githubusercontent.com/<owner>/<repo>/main/config/smtp-app.example.json' -NonInteractive -SecretStorage DPAPI -ExportProtectedPath 'C:\secrets\smtp_secret.prot' -RotateSecret -Force -LogPath 'C:\logs\exo-setup.log'
 ```
 
 **Security note:** Always inspect the remote script before running `iex`. Prefer download-then-inspect or run the pre-run helper (`Scripts/Check-PreRun.ps1`) to run lint/tests locally before invoking remote code.
@@ -182,4 +182,20 @@ New-ExoOauthSmtpAppIdentity -ConfigPath ./config/smtp-app.json -NonInteractive
 Notes:
 - `Mailboxes` is an array of mailbox addresses to check and optionally assign rights for; the script verifies existence and warns if missing.
 - App-only SMTP requires the `SMTP.SendAsApp` application permission and admin consent; the script will create the App Registration and Service Principal but admin consent may need to be granted via portal or pre-approved in your tenant.
+
+---
+
+## Grant Admin Consent (`-GrantAdminConsent`)
+
+- **What it does:** When you run the provisioning script with `-GrantAdminConsent`, the script will attempt to update the application's `requiredResourceAccess` to include the Exchange app role and will programmatically assign the app role to the service principal (effectively granting admin consent for that app role).
+- **Who should run it:** Only a tenant Global Administrator or similarly privileged account should run this command.
+- **Security implications:** Granting admin consent gives the application permission to act with elevated scope. Treat client secrets and certificates used for non-interactive auth as highly sensitive.
+- **Example:**
+
+```powershell
+# unattended provisioning as tenant admin (ensure config contains TenantID, ClientId/ClientSecret or cert)
+.\Scripts\New-ExoOauthSmtpAppIdentity.ps1 -ConfigPath .\Scripts\config\smtp-app.json -NonInteractive -AutoInstallModules -GrantAdminConsent
+```
+
+If programmatic admin consent fails the script logs the failure and recommends granting consent via the Azure Portal (Enterprise Applications → the app → Permissions → Grant admin consent).
 

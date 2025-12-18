@@ -25,11 +25,11 @@ Purpose: provide a safe, repeatable flow for running the provisioning script rem
 - Open the raw file in your browser or download and inspect locally:
 ```powershell
 # Download and inspect
-irm 'https://raw.githubusercontent.com/<owner>/<repo>/main/Scripts/Run-Interactive-Setup.ps1' -OutFile ./Run-Interactive-Setup.ps1
-Get-Content ./Run-Interactive-Setup.ps1 -Head 80 | Out-Host
+irm 'https://raw.githubusercontent.com/<owner>/<repo>/main/Scripts/Invoke-InteractiveSetup.ps1' -OutFile ./Invoke-InteractiveSetup.ps1
+Get-Content ./Invoke-InteractiveSetup.ps1 -Head 80 | Out-Host
 ```
 - Prefer using a **tagged release** for production to avoid code drift:
-  - https://raw.githubusercontent.com/<owner>/<repo>/v1.0.0/Scripts/Run-Interactive-Setup.ps1
+  - https://raw.githubusercontent.com/<owner>/<repo>/v1.0.0/Scripts/Invoke-InteractiveSetup.ps1
 
 ---
 
@@ -46,14 +46,14 @@ pwsh -File .\Scripts\Check-PreRun.ps1
 - Dry-run checks config and mailbox availability without creating resources.
 - Example (remote DryRun):
 ```powershell
-iex (irm 'https://raw.githubusercontent.com/<owner>/<repo>/main/Scripts/Run-Interactive-Setup.ps1'); \
-  Run-Interactive-Setup -ConfigUrl 'https://raw.githubusercontent.com/<owner>/<repo>/main/config/smtp-app.example.json' -NonInteractive -DryRun
+iex (irm 'https://raw.githubusercontent.com/<owner>/<repo>/main/Scripts/Invoke-InteractiveSetup.ps1'); \
+  Invoke-InteractiveSetup -ConfigUrl 'https://raw.githubusercontent.com/<owner>/<repo>/main/config/smtp-app.example.json' -NonInteractive -DryRun
 ```
 - Or use inline JSON:
 ```powershell
 $cfg = '{"DisplayName":"My SMTP App","TenantId":"00000000-0000-0000-0000-000000000000","Mailboxes":["no-reply@contoso.com"]}'
-iex (irm 'https://raw.githubusercontent.com/<owner>/<repo>/main/Scripts/Run-Interactive-Setup.ps1'); \
-  Run-Interactive-Setup -ConfigPath $cfg -NonInteractive -DryRun
+iex (irm 'https://raw.githubusercontent.com/<owner>/<repo>/main/Scripts/Invoke-InteractiveSetup.ps1'); \
+  Invoke-InteractiveSetup -ConfigPath $cfg -NonInteractive -DryRun
 ```
 
 ---
@@ -63,14 +63,14 @@ iex (irm 'https://raw.githubusercontent.com/<owner>/<repo>/main/Scripts/Run-Inte
 
 DPAPI protected export (local protected file):
 ```powershell
-iex (irm 'https://raw.githubusercontent.com/<owner>/<repo>/main/Scripts/Run-Interactive-Setup.ps1'); \
-  Run-Interactive-Setup -ConfigUrl 'https://raw.githubusercontent.com/<owner>/<repo>/main/config/smtp-app.example.json' -NonInteractive -SecretStorage DPAPI -ExportProtectedPath 'C:\secrets\smtp_secret.prot' -RotateSecret -Force -LogPath 'C:\logs\exo-setup.log'
+iex (irm 'https://raw.githubusercontent.com/<owner>/<repo>/main/Scripts/Invoke-InteractiveSetup.ps1'); \
+  Invoke-InteractiveSetup -ConfigUrl 'https://raw.githubusercontent.com/<owner>/<repo>/main/config/smtp-app.example.json' -NonInteractive -SecretStorage DPAPI -ExportProtectedPath 'C:\secrets\smtp_secret.prot' -RotateSecret -Force -LogPath 'C:\logs\exo-setup.log'
 ```
 
 SecretManagement vault (recommended for automation):
 ```powershell
-iex (irm 'https://raw.githubusercontent.com/<owner>/<repo>/main/Scripts/Run-Interactive-Setup.ps1'); \
-  Run-Interactive-Setup -ConfigUrl 'https://raw.githubusercontent.com/<owner>/<repo>/main/config/smtp-app.example.json' -NonInteractive -UseSecretManagement -RotateSecret -Force
+iex (irm 'https://raw.githubusercontent.com/<owner>/<repo>/main/Scripts/Invoke-InteractiveSetup.ps1'); \
+  Invoke-InteractiveSetup -ConfigUrl 'https://raw.githubusercontent.com/<owner>/<repo>/main/config/smtp-app.example.json' -NonInteractive -UseSecretManagement -RotateSecret -Force
 ```
 
 Notes:

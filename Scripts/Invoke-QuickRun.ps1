@@ -3,40 +3,10 @@
   Quick wrapper to run the interactive provisioning script via a single `iex (irm)` invocation.
 
 .DESCRIPTION
-  This script is intended to be run directly from the web, e.g.:
-
-  iex (irm 'https://raw.githubusercontent.com/<owner>/<repo>/main/Scripts/quick-run.ps1') ; \
-    Quick-Run -TenantId '<tenant-guid>' -DisplayName 'My SMTP App' -Mailboxes 'no-reply@contoso.com,notify@contoso.com' -DryRun
-
-  It downloads the canonical `Invoke-InteractiveSetup.ps1` script (from the same repo) to a temp file, dot-sources it, and invokes the `Start-InteractiveSetup` helper non-interactively.
-
-.PARAMETER TenantId
-  Tenant GUID (required for non-interactive runs).
-
-.PARAMETER DisplayName
-  App display name.
-
-.PARAMETER Mailboxes
-  Comma-separated list of mailbox addresses.
-
-.PARAMETER SecretStorage
-  One of: ShowOnce (default), DPAPI, SecretStore, None
-
-.PARAMETER ExportProtectedPath
-  Path to write DPAPI-protected secret file when SecretStorage=DPAPI.
-
-.PARAMETER DryRun
-  Validate only, no resources created.
-
-.PARAMETER Force
-  Auto-accept module installs in non-interactive mode.
-
-.PARAMETER LogPath
-  Optional path to append log file.
-
-.PARAMETER TraceCommands
-  Switch to enable verbose command trace (opt-in).
+  Downloads the canonical `Invoke-InteractiveSetup.ps1` script, dot-sources it, and invokes the
+  `Start-InteractiveSetup` helper non-interactively.
 #>
+
 [CmdletBinding()]
 Param(
     [Parameter(Mandatory=$false)][string]$ScriptUrl = 'https://raw.githubusercontent.com/<owner>/<repo>/main/Scripts/Invoke-InteractiveSetup.ps1',
@@ -61,23 +31,17 @@ function Write-Log([string]$Message, [ValidateSet('INFO','WARN','ERROR','VERBOSE
         'ERROR' { Write-Error $Message }
         'VERBOSE' { Write-Verbose $Message }
     }
-} 
+}
 
 # Fetch the main interactive script to a temp file and dot-source it
-$TempFile = Join-Path -Path ([IO.Path]::GetTempPath()) -ChildPath ("Run-Interactive-Setup-{0}.ps1" -f ([guid]::NewGuid().ToString()))
+$TempFile = Join-Path -Path ([IO.Path]::GetTempPath()) -ChildPath ("Invoke-InteractiveSetup-{0}.ps1" -f ([guid]::NewGuid().ToString()))
 Write-Log "Downloading provisioning helper from $ScriptUrl to $TempFile" 'INFO'
 try {
     (Invoke-RestMethod -Uri $ScriptUrl -UseBasicParsing -ErrorAction Stop) | Out-File -FilePath $TempFile -Encoding UTF8
-} catch {
-    Write-Log "Failed to download provisioning helper: $($_.Exception.Message)" 'ERROR'; throw
-}
+} catch { Write-Log "Failed to download provisioning helper: $($_.Exception.Message)" 'ERROR'; throw }
 
 # Dot-source the downloaded script so Start-InteractiveSetup is available
-try {
-    . $TempFile
-} catch {
-    Write-Log "Failed to load provisioning helper: $($_.Exception.Message)" 'ERROR'; throw
-}
+try { . $TempFile } catch { Write-Log "Failed to load provisioning helper: $($_.Exception.Message)" 'ERROR'; throw }
 
 # Prepare parameters
 $mbArray = @()
@@ -96,23 +60,7 @@ if ($DryRun.IsPresent) { $invokeParams['DryRun'] = $true }
 if ($LogPath) { $invokeParams['LogPath'] = $LogPath }
 if ($TraceCommands.IsPresent) { $invokeParams['TraceCommands'] = $true }
 
-# Validate minimal required values for non-interactive
-if ($invokeParams['NonInteractive'] -and -not $invokeParams.TenantId) {
-    Write-Log "TenantId is required for NonInteractive mode. Provide -TenantId or use interactive mode." 'ERROR'
-    throw 'TenantId missing'
-}
+if ($invokeParams['NonInteractive'] -and -not $invokeParams.TenantId) { Write-Log "TenantId is required for NonInteractive mode. Provide -TenantId or use interactive mode." 'ERROR'; throw 'TenantId missing' }
 
 Write-Log "Invoking Start-InteractiveSetup (non-interactive) with provided parameters..." 'INFO'
-try {
-    Start-InteractiveSetup @invokeParams
-} catch {
-    Write-Log "Provisioning failed: $($_.Exception.Message)" 'ERROR'
-    throw
-} finally {
-    # Cleanup
-    try { Remove-Item -Path $TempFile -Force -ErrorAction SilentlyContinue } catch { }
-}
-
-Write-Warning "quick-run.ps1 is deprecated and replaced by Scripts\Invoke-QuickRun.ps1 (Invoke-QuickRun)."
-Write-Warning "The original contents have been archived in Scripts\archive. Update any remote iex URLs to use Invoke-QuickRun.ps1 or Invoke-InteractiveSetup.ps1." 
-exit 0
+try { Start-InteractiveSetup @invokeParams } catch { Write-Log "Provisioning failed: $($_.Exception.Message)" 'ERROR'; throw } finally { try { Remove-Item -Path $TempFile -Force -ErrorAction SilentlyContinue } catch { } }

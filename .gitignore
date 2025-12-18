@@ -1,0 +1,27 @@
+#directories
+temp
+simple
+Tests
+# Local config and secrets
+/Scripts/config/smtp-app.json
+/config/smtp-app.json
+/Scripts/config/*.json
+!/Scripts/config/*.example.json
+!/config/*.example.json
+
+# Secret files and local env
+*.prot
+*.secret
+secrets/
+.env
+.env.local
+
+# Editor / OS files
+.vscode/
+.vs/
+*.user
+*.suo
+
+#files
+oAuth_config.json
+oAuth_config_v2.json
