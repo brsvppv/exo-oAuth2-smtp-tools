@@ -30,7 +30,7 @@
 
 .EXAMPLE
   # 2. Precise Cleanup by Client ID (Recommended)
-  Remove-ExoSmtpAppPrincipal -ClientId "00000000-0000-0000-0000-000000000000" -Mailboxes "sales@contoso.com"
+  Remove-ExoSmtpAppPrincipal -ClientId "11111111-2222-3333-4444-555555555555" -Mailboxes "sales@contoso.com"
 
 .EXAMPLE
   # 3. Remote Execution (One-Liner)
@@ -38,7 +38,7 @@
 #>
 
 function Remove-ExoSmtpAppPrincipal {
-    [CmdletBinding()]
+    [CmdletBinding(SupportsShouldProcess)]
     param(
         [Parameter(Mandatory = $false)]
         [string]$DisplayName = "Organization SMTP Service",
@@ -150,6 +150,18 @@ function Remove-ExoSmtpAppPrincipal {
         $AppId = $app.AppId
         Write-Log "Targeting: AppId=$AppId, SP_ObjectId=$ServiceId" 'OK'
 
+        # 3b. Extra Safety Check: Description Verification
+        $expectedTag = "Created by ExoOauthSmtpTools script"
+        if ($app -and $app.Description -ne $expectedTag) {
+            Write-Log "SAFETY WARNING: The App '$($app.DisplayName)' does NOT have the safety tag: '$expectedTag'." 'WARN'
+            Write-Log "Current Description: $($app.Description)" 'INFO'
+            
+            $confirmation = Read-Host "Are you SURE you want to delete this app? It may not have been created by this script. (Type 'YES' to proceed)"
+            if ($confirmation -ne 'YES') {
+                throw "Cleanup aborted by user due to safety tag mismatch."
+            }
+        }
+
         # 4. Remove Mailbox Permissions
         if ($Mailboxes) {
             Write-Log "Cleaning Mailbox Permissions..." 'STEP'
@@ -158,8 +170,10 @@ function Remove-ExoSmtpAppPrincipal {
                 try {
                     $perm = Get-MailboxPermission -Identity $mbx -User $ServiceId -ErrorAction SilentlyContinue
                     if ($perm) {
-                        Remove-MailboxPermission -Identity $mbx -User $ServiceId -AccessRights FullAccess -Confirm:$false -ErrorAction Stop | Out-Null
-                        Write-Log "[$mbx] FullAccess removed." 'OK'
+                        if ($PSCmdlet.ShouldProcess($mbx, "Remove FullAccess for $ServiceId")) {
+                            Remove-MailboxPermission -Identity $mbx -User $ServiceId -AccessRights FullAccess -Confirm:$false -ErrorAction Stop | Out-Null
+                            Write-Log "[$mbx] FullAccess removed." 'OK'
+                        }
                     }
                 }
                 catch {
@@ -170,8 +184,10 @@ function Remove-ExoSmtpAppPrincipal {
                 try {
                     $sendAs = Get-RecipientPermission -Identity $mbx -Trustee $ServiceId -ErrorAction SilentlyContinue
                     if ($sendAs) {
-                        Remove-RecipientPermission -Identity $mbx -Trustee $ServiceId -AccessRights SendAs -Confirm:$false -ErrorAction Stop | Out-Null
-                        Write-Log "[$mbx] SendAs removed." 'OK'
+                        if ($PSCmdlet.ShouldProcess($mbx, "Remove SendAs for $ServiceId")) {
+                            Remove-RecipientPermission -Identity $mbx -Trustee $ServiceId -AccessRights SendAs -Confirm:$false -ErrorAction Stop | Out-Null
+                            Write-Log "[$mbx] SendAs removed." 'OK'
+                        }
                     }
                 }
                 catch {
@@ -184,8 +200,10 @@ function Remove-ExoSmtpAppPrincipal {
         if ($ServiceId) {
             Write-Log "Removing Exchange Service Principal..." 'STEP'
             try {
-                Remove-ServicePrincipal -Identity $ServiceId -Confirm:$false -ErrorAction Stop
-                Write-Log "Exchange SP deleted." 'OK'
+                if ($PSCmdlet.ShouldProcess($ServiceId, "Remove Exchange Service Principal")) {
+                    Remove-ServicePrincipal -Identity $ServiceId -Confirm:$false -ErrorAction Stop
+                    Write-Log "Exchange SP deleted." 'OK'
+                }
             }
             catch {
                 Write-Log "Exchange SP already gone or failed: $_" 'WARN'
@@ -196,8 +214,10 @@ function Remove-ExoSmtpAppPrincipal {
         if ($ServiceId) {
             Write-Log "Removing Entra Service Principal..." 'STEP'
             try {
-                Remove-MgServicePrincipal -ServicePrincipalId $ServiceId -ErrorAction Stop
-                Write-Log "Entra SP deleted." 'OK'
+                if ($PSCmdlet.ShouldProcess($ServiceId, "Remove Entra Service Principal (Enterprise App)")) {
+                    Remove-MgServicePrincipal -ServicePrincipalId $ServiceId -ErrorAction Stop
+                    Write-Log "Entra SP deleted." 'OK'
+                }
             }
             catch {
                 Write-Log "Entra SP already gone: $_" 'WARN'
@@ -208,8 +228,10 @@ function Remove-ExoSmtpAppPrincipal {
         if ($app) {
             Write-Log "Removing App Registration..." 'STEP'
             try {
-                Remove-MgApplication -ApplicationId $app.Id -ErrorAction Stop
-                Write-Log "App Registration deleted." 'OK'
+                if ($PSCmdlet.ShouldProcess($app.DisplayName, "Remove Entra App Registration ($($app.AppId))")) {
+                    Remove-MgApplication -ApplicationId $app.Id -ErrorAction Stop
+                    Write-Log "App Registration deleted." 'OK'
+                }
             }
             catch {
                 Write-Log "App Registration already gone: $_" 'WARN'

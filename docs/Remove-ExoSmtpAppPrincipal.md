@@ -18,7 +18,7 @@ Use this script to decommission an SMTP App Identity. It performs a clean sweep:
 
 ### Remove by Client ID (Recommended)
 ```powershell
-.\Remove-ExoSmtpAppPrincipal.ps1 -ClientId "00000000-0000-0000-0000-000000000000" -Mailboxes "info@contoso.com"
+.\Remove-ExoSmtpAppPrincipal.ps1 -ClientId "11111111-2222-3333-4444-555555555555" -Mailboxes "info@contoso.com"
 ```
 
 ### Remote Execution (One-Liner)

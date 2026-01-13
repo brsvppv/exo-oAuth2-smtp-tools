@@ -20,7 +20,7 @@ This script is a diagnostic tool to validate that your Azure App, Service Princi
 
 ### Check using Client ID
 ```powershell
-.\Test-ExoOauthSmtpAppIdentity.ps1 -ClientId "00000000-0000-0000-0000-000000000000" -Mailboxes "info@contoso.com"
+.\Test-ExoOauthSmtpAppIdentity.ps1 -ClientId "11111111-2222-3333-4444-555555555555" -Mailboxes "info@contoso.com"
 ```
 
 ### Remote Execution (One-Liner)

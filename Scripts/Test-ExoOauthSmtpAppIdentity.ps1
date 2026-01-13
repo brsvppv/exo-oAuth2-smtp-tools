@@ -19,7 +19,7 @@
 .EXAMPLE
   Test-ExoOauthSmtpAppIdentity -DisplayName "My App" -Mailboxes "info@contoso.com"
 .EXAMPLE
-  Test-ExoOauthSmtpAppIdentity -ClientId "guid" -Mailboxes "info@contoso.com"
+  Test-ExoOauthSmtpAppIdentity -ClientId "11111111-2222-3333-4444-555555555555" -Mailboxes "info@contoso.com"
 
 .EXAMPLE
   # 3. Remote Execution (One-Liner)

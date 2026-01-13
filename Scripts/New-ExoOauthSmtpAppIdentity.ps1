@@ -167,7 +167,7 @@ function New-ExoOauthSmtpAppIdentity {
         $existing = Get-MgApplication -Filter "displayName eq '$DisplayName'" -ErrorAction SilentlyContinue
         if (-not $existing) {
             $audience = if ($MultiTenant) { 'AzureADMultipleOrgs' } else { 'AzureADMyOrg' }
-            $app = New-MgApplication -DisplayName $DisplayName -SignInAudience $audience
+            $app = New-MgApplication -DisplayName $DisplayName -SignInAudience $audience -Description "Created by ExoOauthSmtpTools script"
             Write-Log "Created App. AppId: $($app.AppId)" 'OK'
         }
         else {
