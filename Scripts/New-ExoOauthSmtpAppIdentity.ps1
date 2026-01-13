@@ -297,6 +297,9 @@ function New-ExoOauthSmtpAppIdentity {
             }
         }
 
+        # Helper Commands (Ready-to-Paste)
+        $joinedMailboxes = $Mailboxes -join "','"
+        
         # Return Object
         $result = [PSCustomObject]@{
             TenantName      = $TenantName
@@ -312,9 +315,8 @@ function New-ExoOauthSmtpAppIdentity {
             Mailboxes       = $Mailboxes
             Permissions     = if ($AddSendAs) { "FullAccess, SendAs" } else { "FullAccess" }
             
-            # Helper Commands (Ready-to-Paste)
-            CleanupCommand  = "Remove-ExoSmtpAppPrincipal -ClientId `"$ClientId`" -Mailboxes `"$($Mailboxes -join '','' )`""
-            TestCommand     = "Test-ExoOauthSmtpAppIdentity -ClientId `"$ClientId`" -Mailboxes `"$($Mailboxes -join '','' )`""
+            CleanupCommand  = "Remove-ExoSmtpAppPrincipal -ClientId `"$ClientId`" -Mailboxes `"$joinedMailboxes`""
+            TestCommand     = "Test-ExoOauthSmtpAppIdentity -ClientId `"$ClientId`" -Mailboxes `"$joinedMailboxes`""
             MailTestCommand = "Invoke-ApiMailNotification -ClientId `"$ClientId`" -TenantID `"$TenantIdGuid`" -SecretValue `"$ClientSecret`" -From `"$($Mailboxes[0])`" -To `"receiver@example.com`" -Subject `"Test Email`" -Content `"Content`""
         }
         
