@@ -104,9 +104,7 @@ function New-ExoOauthSmtpAppIdentity {
         [int]$RetryMax = 8
     )
 
-    # -------------------------------------------------------------------
     # Nested Helpers (Private)
-    # -------------------------------------------------------------------
     function Write-Log {
         param([string]$Message, [ValidateSet('INFO', 'WARN', 'ERROR', 'OK', 'STEP')][string]$Level = 'INFO')
         $ts = (Get-Date).ToString('u')
@@ -132,9 +130,7 @@ function New-ExoOauthSmtpAppIdentity {
         Write-Log "Module loaded: $Name" 'OK'
     }
 
-    # -------------------------------------------------------------------
     # Execution Logic
-    # -------------------------------------------------------------------
     try {
         $ErrorActionPreference = 'Stop'
         
