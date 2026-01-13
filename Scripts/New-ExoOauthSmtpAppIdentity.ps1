@@ -1,702 +1,339 @@
 ﻿<#
 .SYNOPSIS
-  Idempotent, production-ready provisioning for an Exchange Online SMTP OAuth2 App.
+  Sets up an Entra app + EXO service principal for SMTP OAuth (XOAUTH2).
+  Can be run locally, or remotely via 'irm ... | iex'.
 
 .DESCRIPTION
-  Best-practices PowerShell script for provisioning an Azure App Registration + ServicePrincipal
-  suitable for Exchange Online SMTP client-credentials XOAUTH2. Designed for a clean Windows
-  installation: checks and installs required modules (non-interactively where possible), enforces
-  strict mode, validates inputs, supports config file input, DPAPI protected export, and
-  optional SecretManagement storage.
+  Modular setup script for Business Central SMTP OAuth.
+  - Creates App Registration & Service Principal
+  - Generates Secrets
+  - Assigns Permissions (SMTP.Send/SendAs)
+  - Remediates SMTP Client Auth posture
+  
+  Remote Usage (Parameter Object):
+  $params = @{ Mailboxes = "info@contoso.com"; AddSendAs = $true }
+  $res = irm <url> | iex
 
-.NOTES
-  - Safe-by-default: secrets are never printed unless `-ShowSecret` is explicitly specified.
-  - DPAPI protected exports are CurrentUser & machine bound. Use a vault (Azure Key Vault) for
-    automation or cross-machine workflows.
+  Remote Usage (One-Liner):
+  irm <url> | iex; New-ExoOauthSmtpAppIdentity -Mailboxes "info@contoso.com" -AddSendAs
 
-  Usage (recommended): download-then-inspect before running.
-    Invoke-WebRequest -Uri <raw-url> -OutFile ./New-ExoOauthSmtpAppIdentity.ps1
-    Get-Content ./New-ExoOauthSmtpAppIdentity.ps1
-    pwsh ./New-ExoOauthSmtpAppIdentity.ps1 -DisplayName "My SMTP App" -TenantId <tenant> -Mailboxes user@contoso.com
+.PARAMETER DisplayName
+  App registration display name.
+.PARAMETER SecretName
+  Friendly name for the client secret.
+.PARAMETER YearsValid
+  Validity period for the secret.
+.PARAMETER Mailboxes
+  List of SMTP addresses to authorize.
+.PARAMETER MultiTenant
+  Multi-tenant app registration.
+.PARAMETER AddSendAs
+  Grant SendAs permission in addition to FullAccess.
+.PARAMETER GrantSmtpPermission
+  Automate admin consent for SMTP.Send/SendAsApp.
+.PARAMETER SmtpPermission
+  Specific permission string (SMTP.Send vs SMTP.SendAsApp).
+.PARAMETER EnableOrgSmtp
+  Enable global SMTP Client Auth.
+.PARAMETER FixMailboxSmtp
+  Enable mailbox-specific SMTP Client Auth.
+.PARAMETER RetryMax
+  Retry attempts for Service Principal propagation.
 
+.EXAMPLE
+  # 1. Basic Usage (Minimal)
+  # Creates app, secret, and grants FullAccess.
+  New-ExoOauthSmtpAppIdentity -Mailboxes "info@contoso.com"
+
+.EXAMPLE
+  # 2. Recommended for Business Central (Full Setup)
+  # Grants FullAccess AND SendAs, and ensures SMTP Auth is enabled on the mailbox.
+  New-ExoOauthSmtpAppIdentity -Mailboxes "sales@contoso.com" -AddSendAs -FixMailboxSmtp
+
+.EXAMPLE
+  # 3. Custom Names & Secret Validity
+  # Use specific names for the Azure App and Secret, and set secret to expire in 5 years.
+  New-ExoOauthSmtpAppIdentity -DisplayName "My ERP Mailer" -SecretName "BC_Secret_2024" -YearsValid 5 -Mailboxes "admin@contoso.com"
+
+.EXAMPLE
+  # 4. Global Smtp Fix (Legacy Support)
+  # If the tenant has SMTP Auth disabled globally, this switch enables it (use with caution).
+  New-ExoOauthSmtpAppIdentity -Mailboxes "legacy@contoso.com" -EnableOrgSmtp
+
+.EXAMPLE
+  # 5. Remote "One-Liner" Execution
+  # Download and run in memory without saving the file.
+  irm https://raw.githubusercontent.com/username/repo/main/New-ExoOauthSmtpAppIdentity.ps1 | iex; New-ExoOauthSmtpAppIdentity -Mailboxes "info@contoso.com" -AddSendAs
 #>
 
 function New-ExoOauthSmtpAppIdentity {
-    [CmdletBinding(SupportsShouldProcess=$true, ConfirmImpact='Medium')]
-    Param(
-        [Parameter(Mandatory=$true)]
-        [ValidateNotNullOrEmpty()]
-        [string]$DisplayName,
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $false)]
+        [string]$DisplayName = "Organization SMTP Service",
 
-        [Parameter(Mandatory=$true)]
-        [ValidateNotNullOrEmpty()]
-        [string]$TenantId,
+        [Parameter(Mandatory = $false)]
+        [string]$SecretName = "Organization SMTP Secret",
 
-        [Parameter(Mandatory=$false)]
-        [ValidateNotNullOrEmpty()]
-        [string[]]$Mailboxes = @(),
+        [Parameter(Mandatory = $false)]
+        [int]$YearsValid = 2,
 
-        [Parameter(Mandatory=$false)]
-        [int]$SecretValidityYears = 2,
-
-        [Parameter(Mandatory=$false)]
-        [switch]$RotateSecret,
-
-        [Parameter(Mandatory=$false)]
-        [string]$ConfigPath,
-
-        [Parameter(Mandatory=$false)]
-        [string]$ExportProtectedPath,
-
-        [Parameter(Mandatory=$false)]
-        [string]$ExportSecretPath,
-
-        [Parameter(Mandatory=$false)]
-        [switch]$UseSecretManagement,
-
-        [Parameter(Mandatory=$false)]
-        [switch]$ShowSecret,
-
-        [Parameter(Mandatory=$false)]
-        [switch]$NonInteractive
-        ,
-        [Parameter(Mandatory=$false)]
-        [switch]$DryRun
-    )
-
-    Set-StrictMode -Version Latest
-    $ErrorActionPreference = 'Stop'
-
-    # Enforce TLS1.2
-    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-
-    # Module checks (clean Windows install considerations)
-    $modules = @('Microsoft.Graph','ExchangeOnlineManagement','Microsoft.PowerShell.SecretManagement','Microsoft.PowerShell.SecretStore')
-    foreach ($m in $modules) { Install-ModuleIfMissing -Name $m }
-
-    if ($UseSecretManagement) {
-        try {
-            Import-Module Microsoft.PowerShell.SecretManagement -ErrorAction Stop
-            Import-Module Microsoft.PowerShell.SecretStore -ErrorAction Stop
-        } catch {
-            Write-Log "SecretManagement modules not available: $($_.Exception.Message)" 'WARN'
-            if ($NonInteractive) {
-                Write-Log "Skipping interactive SecretStore setup in NonInteractive mode." 'WARN'
-            } else {
-                Write-Log "Registering SecretStore (local) for development use." 'INFO'
-                Register-SecretVault -Name SecretStore -ModuleName Microsoft.PowerShell.SecretStore -DefaultVault -ErrorAction SilentlyContinue
-            }
-        }
-    }
-
-    # Apply config file overrides if provided
-    if ($PSBoundParameters.ContainsKey('ConfigPath') -and $ConfigPath) {
-        $cfg = Test-ConfigFile -Path $ConfigPath
-        if ($cfg.DisplayName) { $DisplayName = $cfg.DisplayName }
-        if ($cfg.TenantId) { $TenantId = $cfg.TenantId }
-        if ($cfg.Mailboxes) { $Mailboxes = $cfg.Mailboxes }
-        if ($cfg.SecretValidityYears) { $SecretValidityYears = $cfg.SecretValidityYears }
-        if ($cfg.ExportProtectedPath) { $ExportProtectedPath = $cfg.ExportProtectedPath }
-        if ($cfg.ExportSecretPath) { $ExportSecretPath = $cfg.ExportSecretPath }
-        if ($cfg.UseSecretManagement -eq $true) { $UseSecretManagement = $true }
-    }
-
-    ## Prefer module implementation when available
-    if (Get-Module -ListAvailable -Name ExoOauthSmtp) {
-        Import-Module ExoOauthSmtp -ErrorAction Stop
-        return New-ExoOauthSmtpAppIdentity @PSBoundParameters
-    }
-
-    ## Fallback to inline implementation (back-compat)
-    Import-Module Microsoft.Graph -ErrorAction Stop
-    # Attempt to find existing app
-    $existing = Get-MgApplication -Filter "displayName eq '$DisplayName'" -ErrorAction SilentlyContinue
-    if ($existing) {
-        Write-Log "Application already exists: $($existing.Id)" 'INFO'
-        $app = $existing
-    } else {
-        # Create application
-        $app = New-MgApplication -DisplayName $DisplayName
-        Write-Log "Created Application: $($app.Id)" 'INFO'
-    }
-
-    # Ensure service principal exists
-    $sp = Get-MgServicePrincipal -Filter "AppId eq '$($app.AppId)'" -ErrorAction SilentlyContinue
-    if (-not $sp) {
-        $sp = New-MgServicePrincipal -AppId $app.AppId
-        Write-Log "Created ServicePrincipal: $($sp.Id)" 'INFO'
-    } else { Write-Log "ServicePrincipal exists: $($sp.Id)" 'INFO' }
-
-    # Secret creation / rotation (fallback behavior)
-    if ($RotateSecret -or -not ($app.PasswordCredentials) -or $app.PasswordCredentials.Count -eq 0) {
-        $end = (Get-Date).AddYears($SecretValidityYears)
-        $secret = New-MgApplicationPassword -ApplicationId $app.Id -DisplayName "Provisioned-$(Get-Date -Format yyyyMMddHHmm)" -EndDateTime $end
-        $clientSecret = $secret.SecretText
-        Write-Log "Created new client secret (one-time value)." 'WARN'
-
-        if ($ExportProtectedPath) { Protect-SecretToFile -SecretPlainText $clientSecret -Path $ExportProtectedPath }
-        if ($ExportSecretPath) { Export-SecretToFilePlain -SecretPlainText $clientSecret -Path $ExportSecretPath }
-        if ($UseSecretManagement) {
-            try {
-                Set-Secret -Name "${DisplayName}_ClientSecret" -Secret $clientSecret -Vault SecretStore -ErrorAction Stop
-                Write-Log "Stored secret in SecretManagement (SecretStore)." 'INFO'
-            } catch {
-                Write-Log "Failed to store in SecretManagement: $($_.Exception.Message)" 'WARN'
-            }
-        }
-
-        if ($ShowSecret) {
-            Write-Log "ONE-TIME CLIENT SECRET (copy now): $clientSecret" 'WARN'
-        } else {
-            Write-Log "Client secret created but not displayed. Use -ShowSecret to reveal once." 'INFO'
-        }
-    } else {
-        Write-Log "Existing client secret(s) present. Use -RotateSecret to create a new one." 'INFO'
-    }
-
-    if ($DryRun) {
-        Write-Log "Dry run: mailbox validation and configuration checks only (no changes made)." 'INFO'
-        foreach ($mailbox in $Mailboxes) {
-            try { Get-Mailbox -Identity $mailbox -ErrorAction Stop; Write-Log "Mailbox exists: $mailbox" 'INFO' } catch { Write-Warning "Mailbox missing or inaccessible: $mailbox" }
-        }
-        return @{ DryRun = $true; DisplayName = $DisplayName; TenantId = $TenantId; Mailboxes = $Mailboxes }
-    }
-
-    # Mailbox grants: add SendAsApp permissions where supported (example pattern)
-    foreach ($mailbox in $Mailboxes) {
-        try {
-            # Verify mailbox exists before attempting grant
-            $mb = Get-Mailbox -Identity $mailbox -ErrorAction Stop
-            Write-Log "Mailbox exists: $mailbox" 'INFO'
-        } catch {
-            Write-Log "Mailbox not found: $mailbox - skipping" 'WARN'
-        }
-    }
-
-    return @{ Application = $app; ServicePrincipal = $sp }
-}
-
-function Write-Log {
-    Param([string]$Message, [ValidateSet('INFO','WARN','ERROR','VERBOSE')] [string]$Level = 'INFO')
-    $time = (Get-Date).ToString('s')
-    switch ($Level) {
-        'INFO'  { Write-Information -MessageData "[$time] INFO: $Message" -InformationAction Continue }
-        'WARN'  { Write-Warning "[$time] WARN: $Message" }
-        'ERROR' { Write-Error "[$time] ERROR: $Message" }
-        'VERBOSE' { Write-Verbose "[$time] VERBOSE: $Message" }
-    }
-} 
-
-function Install-ModuleIfMissing {
-    Param(
-        [Parameter(Mandatory=$true)][string]$Name,
-        [string]$MinimumVersion
-    )
-    try {
-        $mod = Get-Module -ListAvailable -Name $Name | Sort-Object Version -Descending | Select-Object -First 1
-        if (-not $mod) {
-            Write-Log "Module $Name not found, installing..." 'WARN'
-            if ($NonInteractive) {
-                Install-Module -Name $Name -Scope CurrentUser -Force -AllowClobber -Confirm:$false
-            } else {
-                Install-Module -Name $Name -Scope CurrentUser -Force -AllowClobber
-            }
-        } else {
-            Write-Log "Module $Name found (v$($mod.Version))." 'INFO'
-        }
-    } catch {
-        Write-Log ("Failed to install or load module {0}: {1}" -f $Name, $_.Exception.Message) 'ERROR'
-        throw
-    }
-} 
-
-function Protect-SecretToFile {
-    Param(
-        [Parameter(Mandatory=$true)][string]$SecretPlainText,
-        [Parameter(Mandatory=$true)][string]$Path
-    )
-    $bytes = [System.Text.Encoding]::UTF8.GetBytes($SecretPlainText)
-    $prot = [System.Security.Cryptography.ProtectedData]::Protect($bytes, $null, [System.Security.Cryptography.DataProtectionScope]::CurrentUser)
-    $b64 = [Convert]::ToBase64String($prot)
-    $dir = Split-Path $Path -Parent
-    if (-not (Test-Path $dir)) { New-Item -ItemType Directory -Path $dir | Out-Null }
-    $b64 | Out-File -FilePath $Path -Encoding ascii -Force
-    Write-Log "Protected secret exported to $Path (DPAPI, CurrentUser)." 'INFO'
-}
-
-function Export-SecretToFilePlain {
-    Param([string]$SecretPlainText, [string]$Path)
-    $dir = Split-Path $Path -Parent
-    if (-not (Test-Path $dir)) { New-Item -ItemType Directory -Path $dir | Out-Null }
-    $SecretPlainText | Out-File -FilePath $Path -Encoding ascii -Force
-    Write-Log "Plain secret exported to $Path (attempted ACL not enforced)." 'WARN'
-}
-
-function Test-ConfigFile {
-    Param([string]$Path)
-    if (-not (Test-Path $Path)) { throw "Config file not found: $Path" }
-    try { $json = Get-Content -Path $Path -Raw | ConvertFrom-Json; return $json } catch { throw "Invalid JSON in $Path : $($_.Exception.Message)" }
-} 
-
-## Module checks (clean Windows install considerations)
-$modules = @('Microsoft.Graph','ExchangeOnlineManagement','Microsoft.PowerShell.SecretManagement','Microsoft.PowerShell.SecretStore')
-foreach ($m in $modules) { Install-ModuleIfMissing -Name $m }
-
-if ($UseSecretManagement) {
-    try {
-        Import-Module Microsoft.PowerShell.SecretManagement -ErrorAction Stop
-        Import-Module Microsoft.PowerShell.SecretStore -ErrorAction Stop
-    } catch {
-        Write-Log "SecretManagement modules not available: $($_.Exception.Message)" 'WARN'
-        if ($NonInteractive) {
-            Write-Log "Skipping interactive SecretStore setup in NonInteractive mode." 'WARN'
-        } else {
-            Write-Log "Registering SecretStore (local) for development use." 'INFO'
-            Register-SecretVault -Name SecretStore -ModuleName Microsoft.PowerShell.SecretStore -DefaultVault -ErrorAction SilentlyContinue
-        }
-    }
-}
-
-# Apply config file overrides if provided
-if ($PSBoundParameters.ContainsKey('ConfigPath') -and $ConfigPath) {
-    $cfg = Test-ConfigFile -Path $ConfigPath
-    if ($cfg.DisplayName) { $DisplayName = $cfg.DisplayName }
-    if ($cfg.TenantId) { $TenantId = $cfg.TenantId }
-    if ($cfg.Mailboxes) { $Mailboxes = $cfg.Mailboxes }
-    if ($cfg.SecretValidityYears) { $SecretValidityYears = $cfg.SecretValidityYears }
-    if ($cfg.ExportProtectedPath) { $ExportProtectedPath = $cfg.ExportProtectedPath }
-    if ($cfg.ExportSecretPath) { $ExportSecretPath = $cfg.ExportSecretPath }
-    if ($cfg.UseSecretManagement -eq $true) { $UseSecretManagement = $true }
-}
-
-function New-SmtpApp {
-    [CmdletBinding(SupportsShouldProcess=$true)]
-    Param(
-        [string]$DisplayName,
-        [string]$TenantId,
+        [Parameter(Mandatory = $true)]
         [string[]]$Mailboxes,
-        [int]$YearsValid
+
+        [Parameter(Mandatory = $false)]
+        [switch]$MultiTenant,
+
+        [Parameter(Mandatory = $false)]
+        [switch]$AddSendAs,
+
+        [Parameter(Mandatory = $false)]
+        [bool]$GrantSmtpPermission = $true,
+
+        [Parameter(Mandatory = $false)]
+        [ValidateSet("SMTP.Send", "SMTP.SendAsApp")]
+        [string]$SmtpPermission = "SMTP.Send",
+
+        [Parameter(Mandatory = $false)]
+        [switch]$EnableOrgSmtp,
+
+        [Parameter(Mandatory = $false)]
+        [switch]$FixMailboxSmtp,
+
+        [Parameter(Mandatory = $false)]
+        [int]$RetryMax = 8
     )
 
-    if ($PSCmdlet.ShouldProcess("Application: $DisplayName", "Create or ensure app exists")) {
-        # NOTE: This script uses Microsoft.Graph module cmdlets. Ensure the calling identity
-        # has permission to create applications and service principals.
-        Import-Module Microsoft.Graph -ErrorAction Stop
+    # -------------------------------------------------------------------
+    # Nested Helpers (Private)
+    # -------------------------------------------------------------------
+    function Write-Log {
+        param([string]$Message, [ValidateSet('INFO', 'WARN', 'ERROR', 'OK', 'STEP')][string]$Level = 'INFO')
+        $ts = (Get-Date).ToString('u')
+        $color = switch ($Level) {
+            'INFO' { 'Gray' }
+            'WARN' { 'DarkYellow' }
+            'ERROR' { 'Red' }
+            'OK' { 'Green' }
+            'STEP' { 'Cyan' }
+        }
+        # In a function returning data, we use Write-Host for status to avoid polluting the output stream
+        # unless checking for non-interactive scenarios.
+        Write-Host "[$ts] [$Level] $Message" -ForegroundColor $color
+    }
 
-        # Attempt to find existing app
+    function Initialize-RequiredModule {
+        param([string]$Name)
+        if (-not (Get-Module -ListAvailable -Name $Name)) {
+            Write-Log "Installing module: $Name" 'INFO'
+            Install-Module $Name -Scope CurrentUser -Force -ErrorAction Stop
+        }
+        Import-Module $Name -ErrorAction Stop | Out-Null
+        Write-Log "Module loaded: $Name" 'OK'
+    }
+
+    # -------------------------------------------------------------------
+    # Execution Logic
+    # -------------------------------------------------------------------
+    try {
+        $ErrorActionPreference = 'Stop'
+        
+        # 1. Module Checks
+        Write-Log "Checking required modules..." 'STEP'
+        Initialize-RequiredModule -Name Microsoft.Graph.Applications
+        Initialize-RequiredModule -Name Microsoft.Graph.Identity.DirectoryManagement
+        Initialize-RequiredModule -Name ExchangeOnlineManagement
+
+        # 2. Connect to Graph
+        Write-Log "Connecting to Microsoft Graph..." 'STEP'
+        $graphScopes = @('Application.ReadWrite.All', 'AppRoleAssignment.ReadWrite.All', 'Directory.Read.All')
+        try {
+            # Check existing context or connect
+            $ctx = Get-MgContext -ErrorAction SilentlyContinue
+            if (-not $ctx) { Connect-MgGraph -Scopes $graphScopes -ErrorAction Stop | Out-Null }
+        }
+        catch {
+            throw "Failed to connect to Microsoft Graph: $_"
+        }
+        
+        $ctx = Get-MgContext
+        $org = Get-MgOrganization | Select-Object -First 1 DisplayName, Id, VerifiedDomains
+        $TenantName = $org.DisplayName
+        $TenantIdGuid = if ($ctx.TenantId) { $ctx.TenantId } else { $org.Id }
+        Write-Log "Connected. Tenant: $TenantName ($TenantIdGuid)" 'OK'
+
+        # 3. App Registration
+        Write-Log "Creating/Locating App: $DisplayName" 'STEP'
         $existing = Get-MgApplication -Filter "displayName eq '$DisplayName'" -ErrorAction SilentlyContinue
-        if ($existing) {
-            Write-Log "Application already exists: $($existing.Id)" 'INFO'
-            $app = $existing
-        } else {
-            # Create application
-            $app = New-MgApplication -DisplayName $DisplayName
-            Write-Log "Created Application: $($app.Id)" 'INFO'
-        }
-
-        # Ensure service principal exists
-        $sp = Get-MgServicePrincipal -Filter "AppId eq '$($app.AppId)'" -ErrorAction SilentlyContinue
-        if (-not $sp) {
-            $sp = New-MgServicePrincipal -AppId $app.AppId
-            Write-Log "Created ServicePrincipal: $($sp.Id)" 'INFO'
-        } else { Write-Log "ServicePrincipal exists: $($sp.Id)" 'INFO' }
-
-        # Secret creation / rotation
-        if ($RotateSecret -or -not ($app.PasswordCredentials) -or $app.PasswordCredentials.Count -eq 0) {
-            $pwd = New-Guid
-            $secretPlain = [System.Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($pwd.Guid))
-            # Create client secret via Graph SDK
-            $end = (Get-Date).AddYears($YearsValid)
-            $secret = New-MgApplicationPassword -ApplicationId $app.Id -DisplayName "Provisioned-$(Get-Date -Format yyyyMMddHHmm)" -EndDateTime $end
-            $clientSecret = $secret.SecretText
-            Write-Log "Created new client secret (one-time value)." 'WARN'
-
-            if ($ExportProtectedPath) { Protect-SecretToFile -SecretPlainText $clientSecret -Path $ExportProtectedPath }
-            if ($ExportSecretPath) { Export-SecretToFilePlain -SecretPlainText $clientSecret -Path $ExportSecretPath }
-            if ($UseSecretManagement) {
-                try {
-                    Set-Secret -Name "${DisplayName}_ClientSecret" -Secret $clientSecret -Vault SecretStore -ErrorAction Stop
-                    Write-Log "Stored secret in SecretManagement (SecretStore)." 'INFO'
-                } catch {
-                    Write-Log "Failed to store in SecretManagement: $($_.Exception.Message)" 'WARN'
-                }
-            }
-
-            if ($ShowSecret) {
-                Write-Log "ONE-TIME CLIENT SECRET (copy now): $clientSecret" 'WARN'
-            } else {
-                Write-Log "Client secret created but not displayed. Use -ShowSecret to reveal once." 'INFO'
-            }
-        } else {
-            Write-Log "Existing client secret(s) present. Use -RotateSecret to create a new one." 'INFO'
-        }
-
-        # Grant required API permissions for EXO SMTP.SendAsApp
-        # Ensure we have the required OAuth2Permission or AppRole.
-        # This script assumes lab operator will grant admin consent via portal or use Graph permissions flow.
-
-        # Mailbox grants: add SendAsApp permissions where supported (example pattern)
-        foreach ($mailbox in $Mailboxes) {
-            try {
-                # Verify mailbox exists before attempting grant
-                $mb = Get-Mailbox -Identity $mailbox -ErrorAction Stop
-                Write-Log "Mailbox exists: $mailbox" 'INFO'
-                # The actual mailbox grant for App-only SMTP may be tenant-wide via admin consent + application permission (SMTP.SendAsApp)
-            } catch {
-                Write-Log "Mailbox not found: $mailbox - skipping" 'WARN'
-            }
-        }
-
-        return @{ Application = $app; ServicePrincipal = $sp }
-    }
-}
-
-<#
-When this file is downloaded or dot-sourced, it defines `New-ExoOauthSmtpAppIdentity`.
-To invoke immediately after downloading (not recommended without inspection):
-
-iex (irm 'https://raw.githubusercontent.com/<owner>/<repo>/main/Scripts/New-ExoOauthSmtpAppIdentity.ps1')
-New-ExoOauthSmtpAppIdentity -DisplayName 'My SMTP App' -TenantId '<tenant-id>' -Mailboxes 'no-reply@contoso.com' -NonInteractive
-
-Prefer download-then-inspect before running.
-#>
-# --------------------------------------------------------------------------------
-# CONFIGURATION (supports optional JSON import)
-# Usage: .\New-ExoOauthSmtpAppIdentity.ps1 [-ConfigPath <path-to-json>] [-NonInteractive] [-AutoInstallModules]
-# If no -ConfigPath is supplied the script will look for a config file at
-# '<scriptdir>\config\smtp-app.example.json' and fall back to built-in defaults.
-Param(
-    [string]$ConfigPath,
-    [switch]$NonInteractive,
-    [switch]$AutoInstallModules,
-    [switch]$GrantAdminConsent
-)
-
-$ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-
-# Define logging helper early so config load can call it
-function Write-Log([string]$Message, [ValidateSet('INFO','WARN','ERROR','VERBOSE')][string]$Level = 'INFO') {
-    switch ($Level) {
-        'INFO'  { Write-Information -MessageData $Message -InformationAction Continue }
-        'WARN'  { Write-Warning $Message }
-        'ERROR' { Write-Error $Message }
-        'VERBOSE' { Write-Verbose $Message }
-    }
-}
-
-# Load config from JSON if provided or from default example file
-$Config = $null
-if ($ConfigPath) {
-    if (Test-Path -Path $ConfigPath) {
-        try {
-            $Config = Get-Content -Raw -Path $ConfigPath | ConvertFrom-Json
-            Write-Log "Loaded config from $ConfigPath" 'INFO'
-        } catch {
-            Write-Log "Failed to parse config at $ConfigPath: $($_.Exception.Message)" 'WARN'
-        }
-    } else {
-        Write-Log "Config path '$ConfigPath' not found, continuing with defaults." 'WARN'
-    }
-} else {
-    $defaultConfig = Join-Path $ScriptDir 'config\smtp-app.example.json'
-    if (Test-Path -Path $defaultConfig) {
-        try {
-            $Config = Get-Content -Raw -Path $defaultConfig | ConvertFrom-Json
-            Write-Log "Loaded config from $defaultConfig" 'INFO'
-        } catch {
-            Write-Log "Failed to parse default config at $defaultConfig: $($_.Exception.Message)" 'WARN'
-        }
-    }
-}
-
-# Apply config values with safe fallbacks
-$DisplayName = if ($Config -and $Config.DisplayName) { $Config.DisplayName } else { 'Organization SMTP Service' }
-$SecretName  = if ($Config -and $Config.SecretName)  { $Config.SecretName }  else { 'Organization SMTP Secret' }
-$YearsValid  = if ($Config -and $Config.YearsValid)  { [int]$Config.YearsValid }  else { 2 }
-# Apply config values with safe fallbacks (already present above)
-$Mailboxes   = if ($Config -and $Config.Mailboxes)   { @($Config.Mailboxes) } else { @('no-reply@example.com','info@example.com','notify@example.com') }
-$MailboxPermissionMethod = if ($Config -and $Config.MailboxPermissionMethod) { $Config.MailboxPermissionMethod } else { 'AddMailboxPermission' }
-$SecurityGroupForMailboxes = if ($Config -and $Config.SecurityGroupForMailboxes) { $Config.SecurityGroupForMailboxes } else { $null }
-$TenantId    = if ($Config -and $Config.TenantID)    { $Config.TenantID } else { $null }
-
-# optional auth values from config
-$CfgClientId         = if ($Config -and $Config.ClientId)                 { $Config.ClientId } else { $null }
-$CfgClientSecret     = if ($Config -and $Config.ClientSecret)             { $Config.ClientSecret } else { $null }
-$CfgAutoInstall      = if ($Config -and $Config.AutoInstallModules)       { [bool]$Config.AutoInstallModules } else { $false }
-$CfgNonInteractive   = if ($Config -and $Config.NonInteractive)           { [bool]$Config.NonInteractive } else { $false }
-$CfgExchangeCertThumb= if ($Config -and $Config.ExchangeCertificateThumbprint) { $Config.ExchangeCertificateThumbprint } else { $null }
-
-# Merge command-line switches with config flags
-if ($CfgAutoInstall -and -not $AutoInstallModules) { $AutoInstallModules = $true }
-if ($CfgNonInteractive -and -not $NonInteractive) { $NonInteractive = $true }
-
-# --------------------------------------------------------------------------------
-# MODULE CHECK & CONNECTION
-# (logging helper already defined earlier)
-# --------------------------------------------------------------------------------
-Write-Log "Checking modules..." 'INFO'
-# Ensure required modules are installed. If not present, either auto-install or error.
-$requiredModules = @(
-    @{ Name = 'Microsoft.Graph.Applications'; MinimumVersion = '1.0.0' },
-    @{ Name = 'ExchangeOnlineManagement'; MinimumVersion = '3.0.0' }
-)
-foreach ($m in $requiredModules) {
-    $found = Get-Module -ListAvailable -Name $($m.Name) | Where-Object { $_.Version -ge [version]$m.MinimumVersion }
-    if (-not $found) {
-        if ($AutoInstallModules) {
-            Write-Log "Installing module $($m.Name)..." 'INFO'
-            try {
-                Install-Module -Name $($m.Name) -Scope CurrentUser -Force -ErrorAction Stop
-            } catch {
-                Write-Log "Failed to install $($m.Name): $($_.Exception.Message)" 'ERROR'
-                throw
-            }
-        } else {
-            Write-Log "Required module $($m.Name) (>= $($m.MinimumVersion)) is not installed. Rerun with -AutoInstallModules or install it manually." 'ERROR'
-            throw "Missing module $($m.Name)"
-        }
-    } else {
-        Write-Log "Module $($m.Name) present." 'VERBOSE'
-    }
-}
-
-# Connect to Microsoft Graph. Prefer non-interactive client-credentials flow when
-# config provides ClientId+ClientSecret and NonInteractive is requested.
-Write-Log "Connecting to Microsoft Graph..." 'INFO'
-if ($NonInteractive -and $CfgClientId -and $CfgClientSecret -and $TenantId) {
-    try {
-        Connect-MgGraph -ClientId $CfgClientId -TenantId $TenantId -ClientSecret $CfgClientSecret -ErrorAction Stop
-        Write-Log "Connected to Microsoft Graph (app-only)" 'INFO'
-    } catch {
-        Write-Log "Failed non-interactive Graph connect: $($_.Exception.Message)" 'ERROR'
-        throw
-    }
-} else {
-    Write-Log "Falling back to interactive Graph login (prompt will appear)." 'WARN'
-    Connect-MgGraph -Scopes 'Application.ReadWrite.All', 'Directory.Read.All'
-}
-
-# --------------------------------------------------------------------------------
-# STEP 1: AZURE APP REGISTRATION
-# --------------------------------------------------------------------------------
-Write-Log "Checking for existing App Registration..." 'INFO'
-$App = Get-MgApplication -Filter "DisplayName eq '$DisplayName'" -ErrorAction SilentlyContinue
-
-if ($null -eq $App) {
-    Write-Log "Creating NEW App Registration: $DisplayName" 'INFO'
-    $App = New-MgApplication -DisplayName $DisplayName -SignInAudience "AzureADMyOrg"
-} else {
-    Write-Log "Found existing App Registration." 'WARN'
-}
-
-$ClientId = $App.AppId
-$AppObjectId = $App.Id
-
-Write-Log "   - App ID (Client ID): $ClientId" 'INFO'
-Write-Log "   - App Reg Object ID:  $AppObjectId" 'INFO'
-
-# --------------------------------------------------------------------------------
-# STEP 2: GENERATE CLIENT SECRET
-# --------------------------------------------------------------------------------
-Write-Log "Generating Client Secret..." 'INFO'
-$passwordCred = @{
-    displayName = $SecretName
-    endDateTime = (Get-Date).AddYears($YearsValid)
-}
-$SecretInfo = Add-MgApplicationPassword -ApplicationId $AppObjectId -PasswordCredential $passwordCred
-$ClientSecret = $SecretInfo.SecretText
-
-# --------------------------------------------------------------------------------
-# STEP 3: ENSURE SERVICE PRINCIPAL (ENTERPRISE APP) EXISTS
-# --------------------------------------------------------------------------------
-# This is the "Enterprise App" Object ID required by Exchange (NOT the App Reg ID)
-Write-Log "Checking for Enterprise App (Service Principal)..." 'INFO'
-$ServicePrincipal = Get-MgServicePrincipal -Filter "AppId eq '$ClientId'" -ErrorAction SilentlyContinue
-
-if ($null -eq $ServicePrincipal) {
-    Write-Log "Creating Service Principal in Enterprise Apps..." 'INFO'
-    $ServicePrincipal = New-MgServicePrincipal -AppId $ClientId
-    # Sleep briefly to allow propagation
-    Start-Sleep -Seconds 15 
-}
-
-$ServiceId = $ServicePrincipal.Id
-Write-Log "   - Service Principal Object ID: $ServiceId" 'INFO'
-
-# -------------------------------------------------------------------------------
-# Attempt to assign the Exchange app role `SMTP.SendAsApp` to this service principal
-# -------------------------------------------------------------------------------
-Write-Log "Ensuring 'SMTP.SendAsApp' app role is assigned to the Service Principal..." 'INFO'
-# Exchange Online resource AppId (used for app role assignments). If this cannot be
-# found the script will warn and continue; admin can grant the permission in the
-# portal instead.
-$exchangeResourceAppId = '00000002-0000-0ff1-ce00-000000000000'
-$exchangeSp = Get-MgServicePrincipal -Filter "AppId eq '$exchangeResourceAppId'" -ErrorAction SilentlyContinue
-if ($null -ne $exchangeSp) {
-    $appRole = $exchangeSp.AppRoles | Where-Object { ($_.Value -and $_.Value -eq 'SMTP.SendAsApp') -or ($_.DisplayName -and $_.DisplayName -match 'SMTP') } | Select-Object -First 1
-    if ($null -ne $appRole) {
-        # Ensure the application has the requiredResourceAccess entry for Exchange
-        try {
-            $required = @()
-            if ($App.RequiredResourceAccess) { $required = $App.RequiredResourceAccess }
-            $existsReq = $required | Where-Object { $_.ResourceAppId -eq $exchangeResourceAppId }
-            if (-not $existsReq) {
-                $resourceAccess = @(@{ Id = $appRole.Id; Type = 'Role' })
-                $newEntry = @{ ResourceAppId = $exchangeResourceAppId; ResourceAccess = $resourceAccess }
-                $required += $newEntry
-                Update-MgApplication -ApplicationId $AppObjectId -RequiredResourceAccess $required -ErrorAction Stop
-                Write-Log "Updated application RequiredResourceAccess to include Exchange app role." 'INFO'
-            } else {
-                Write-Log "Application already contains requiredResourceAccess for Exchange." 'VERBOSE'
-            }
-        } catch {
-            Write-Log "Failed to update application's RequiredResourceAccess: $($_.Exception.Message)" 'WARN'
-        }
-
-        $existing = Get-MgServicePrincipalAppRoleAssignment -ServicePrincipalId $ServiceId -ErrorAction SilentlyContinue | Where-Object { $_.ResourceId -eq $exchangeSp.Id -and $_.AppRoleId -eq $appRole.Id }
         if (-not $existing) {
-            if ($GrantAdminConsent) {
+            $audience = if ($MultiTenant) { 'AzureADMultipleOrgs' } else { 'AzureADMyOrg' }
+            $app = New-MgApplication -DisplayName $DisplayName -SignInAudience $audience
+            Write-Log "Created App. AppId: $($app.AppId)" 'OK'
+        }
+        else {
+            $app = $existing
+            Write-Log "Found Existing App. AppId: $($app.AppId)" 'WARN'
+        }
+        $ClientId = $app.AppId
+        $AppObjectId = $app.Id
+
+        # 4. Client Secret
+        Write-Log "Creating Client Secret..." 'STEP'
+        $secretParams = @{
+            ApplicationId      = $AppObjectId
+            PasswordCredential = @{
+                displayName = $SecretName
+                endDateTime = (Get-Date).AddYears($YearsValid)
+            }
+        }
+        $secret = Add-MgApplicationPassword @secretParams
+        $ClientSecret = $secret.SecretText
+        Write-Log "Secret created." 'OK'
+
+        # 5. Service Principal
+        Write-Log "Ensuring Service Principal..." 'STEP'
+        $sp = Get-MgServicePrincipal -Filter "appId eq '$ClientId'" -ErrorAction SilentlyContinue
+        if (-not $sp) {
+            $sp = New-MgServicePrincipal -AppId $ClientId
+            Write-Log "Created Service Principal: $($sp.Id)" 'OK'
+        }
+        else {
+            Write-Log "Found Service Principal: $($sp.Id)" 'WARN'
+        }
+        $ServiceId = $sp.Id
+
+        # 6. Permissions (SMTP)
+        if ($GrantSmtpPermission) {
+            Write-Log "Granting SMTP Permission ($SmtpPermission)..." 'STEP'
+            $exoSp = Get-MgServicePrincipal -Filter "displayName eq 'Office 365 Exchange Online'" -ErrorAction SilentlyContinue | Select-Object -First 1
+            if (-not $exoSp) { throw "Could not find 'Office 365 Exchange Online' Service Principal." }
+
+            $smtpRole = $exoSp.AppRoles | Where-Object { $_.Value -eq $SmtpPermission -and $_.AllowedMemberTypes -contains 'Application' }
+            if (-not $smtpRole) { throw "Role '$SmtpPermission' not found on EXO Service Principal." }
+
+            $existingAssignment = Get-MgServicePrincipalAppRoleAssignment -ServicePrincipalId $sp.Id -All | Where-Object { $_.ResourceId -eq $exoSp.Id -and $_.AppRoleId -eq $smtpRole.Id }
+            if (-not $existingAssignment) {
+                New-MgServicePrincipalAppRoleAssignment -ServicePrincipalId $sp.Id -ResourceId $exoSp.Id -AppRoleId $smtpRole.Id | Out-Null
+                Write-Log "Assigned '$SmtpPermission' (Admin Consent Applied)." 'OK'
+            }
+            else {
+                Write-Log "Role '$SmtpPermission' already assigned." 'WARN'
+            }
+        }
+
+        # 7. Connect Exchange & Register
+        Write-Log "Connecting to Exchange Online..." 'STEP'
+        Connect-ExchangeOnline | Out-Null
+        
+        $registered = $false
+        try {
+            Get-ServicePrincipal -Identity $ServiceId -ErrorAction Stop | Out-Null
+            $registered = $true
+        }
+        catch {
+            New-ServicePrincipal -AppId $ClientId -ServiceId $ServiceId -DisplayName $DisplayName | Out-Null
+            Write-Log "Registered Service Principal in EXO." 'OK'
+        }
+
+        if (-not $registered) {
+            $attempt = 0
+            while ($attempt -lt $RetryMax -and -not $registered) {
+                Start-Sleep -Seconds 15
+                $attempt++
                 try {
-                    New-MgServicePrincipalAppRoleAssignment -ServicePrincipalId $ServiceId -PrincipalId $ServiceId -ResourceId $exchangeSp.Id -Id $appRole.Id -ErrorAction Stop
-                    Write-Log "Assigned app role '$($appRole.DisplayName)' to service principal (admin consent granted)." 'INFO'
-                } catch {
-                    Write-Log "Failed to assign app role: $($_.Exception.Message)" 'WARN'
-                    Write-Log "You may need to grant 'SMTP.SendAsApp' in the Azure Portal and grant admin consent." 'WARN'
+                    Get-ServicePrincipal -Identity $ServiceId -ErrorAction Stop | Out-Null
+                    $registered = $true
+                    Write-Log "EXO SP visible (Attempt $attempt)." 'OK'
                 }
-            } else {
-                Write-Log "App role '$($appRole.DisplayName)' is not assigned. Re-run with -GrantAdminConsent to assign it programmatically." 'WARN'
+                catch {
+                    Write-Log "Waiting for propagation... ($attempt/$RetryMax)" 'WARN'
+                }
             }
-        } else {
-            Write-Log "'SMTP.SendAsApp' already assigned to service principal." 'WARN'
+            if (-not $registered) { throw "EXO Service Principal failed to propagate." }
         }
-    } else {
-        Write-Log "Could not locate an app role matching 'SMTP.SendAsApp' on the Exchange resource app." 'WARN'
-    }
-} else {
-    Write-Log "Could not locate Exchange resource service principal (AppId $exchangeResourceAppId). Skipping app-role assignment." 'WARN'
-}
 
-# --------------------------------------------------------------------------------
-# STEP 4: EXCHANGE ONLINE CONFIGURATION
-# --------------------------------------------------------------------------------
-Write-Log "Connecting to Exchange Online..." 'INFO'
-if ($NonInteractive -and $CfgExchangeCertThumb) {
-    try {
-        Connect-ExchangeOnline -AppId $ClientId -CertificateThumbprint $CfgExchangeCertThumb -Organization $TenantId -ErrorAction Stop
-        Write-Log "Connected to Exchange Online (app cert)" 'INFO'
-    } catch {
-        Write-Log "Failed non-interactive Exchange connect: $($_.Exception.Message)" 'ERROR'
-        throw
-    }
-} else {
-    Write-Log "Connecting to Exchange Online interactively." 'INFO'
-    Connect-ExchangeOnline
-}
-
-Write-Log "Registering Service Principal in Exchange..." 'INFO'
-# Check if it is already registered to avoid errors
-try {
-    $ExchSP = Get-ServicePrincipal -Identity $ServiceId -ErrorAction Stop
-    Write-Log "Service Principal already registered in Exchange." 'WARN'
-} catch {
-    Write-Log "Registering new Service Principal in Exchange..." 'INFO'
-    New-ServicePrincipal -AppId $ClientId -ServiceId $ServiceId -DisplayName $DisplayName
-}
-
-# --------------------------------------------------------------------------------
-# STEP 5: ASSIGN MAILBOX PERMISSIONS (supports ApplicationAccessPolicy)
-# --------------------------------------------------------------------------------
-Write-Log "Assigning Permissions to Mailboxes (method=$MailboxPermissionMethod)..." 'INFO'
-
-if ($MailboxPermissionMethod -eq 'ApplicationAccessPolicy') {
-    # Resolve or create security group
-    $group = $null
-    if ($SecurityGroupForMailboxes) {
-        # If it's a GUID-like string treat as group id, else attempt to find by displayName
-        if ($SecurityGroupForMailboxes -match '^[0-9a-fA-F\-]{36}$') {
-            $group = Get-MgGroup -GroupId $SecurityGroupForMailboxes -ErrorAction SilentlyContinue
-        } else {
-            $group = Get-MgGroup -Filter "displayName eq '$SecurityGroupForMailboxes'" -ErrorAction SilentlyContinue | Select-Object -First 1
+        # 8. Posture Checks
+        if ($EnableOrgSmtp) {
+            $tc = Get-TransportConfig
+            if ($tc.SmtpClientAuthenticationDisabled) {
+                Write-Log "Enabling Org-wide SMTP Client Auth..." 'WARN'
+                Set-TransportConfig -SmtpClientAuthenticationDisabled:$false
+                Write-Log "Enabled." 'OK'
+            }
         }
-    }
-    if (-not $group) {
-        $groupName = "$DisplayName - MailboxScope"
-        Write-Log "Creating security group '$groupName' for mailbox scope..." 'INFO'
-        try {
-            $group = New-MgGroup -DisplayName $groupName -MailEnabled:$false -MailNickname ($groupName -replace '\\s','') -SecurityEnabled:$true -ErrorAction Stop
-            Write-Log "Created group $($group.Id)" 'INFO'
-        } catch {
-            Write-Log "Failed to create security group: $($_.Exception.Message)" 'ERROR'
-            throw
-        }
-    } else {
-        Write-Log "Using existing security group $($group.Id)" 'INFO'
-    }
 
-    # Add mailbox users to the group
-    foreach ($Email in $Mailboxes) {
-        Write-Log "   Adding $Email to group..." 'INFO'
-        $user = Get-MgUser -Filter "mail eq '$Email' or userPrincipalName eq '$Email'" -ErrorAction SilentlyContinue | Select-Object -First 1
-        if ($user) {
+        # 9. Mailbox Permissions
+        Write-Log "Assigning Mailbox Permissions..." 'STEP'
+        foreach ($mbx in $Mailboxes) {
             try {
-                New-MgGroupMember -GroupId $group.Id -DirectoryObjectId $user.Id -ErrorAction Stop
-                Write-Log "   - Added $Email to group." 'INFO'
-            } catch {
-                Write-Log "   - Could not add $Email to group: $($_.Exception.Message)" 'WARN'
+                Add-MailboxPermission -Identity $mbx -User $ServiceId -AccessRights FullAccess -AutoMapping:$false -ErrorAction Stop | Out-Null
+                Write-Log "[$mbx] FullAccess granted." 'OK'
             }
-        } else {
-            Write-Log "   - Could not find user for $Email in Graph. Skipping." 'WARN'
+            catch {
+                Write-Log "[$mbx] FullAccess failed or exists: $_" 'WARN'
+            }
+
+            if ($AddSendAs) {
+                try {
+                    Add-RecipientPermission -Identity $mbx -Trustee $ServiceId -AccessRights SendAs -Confirm:$false -ErrorAction Stop | Out-Null
+                    Write-Log "[$mbx] SendAs granted." 'OK'
+                }
+                catch {
+                    Write-Log "[$mbx] SendAs failed or exists: $_" 'WARN'
+                }
+            }
+
+            if ($FixMailboxSmtp) {
+                try {
+                    $cas = Get-CASMailbox -Identity $mbx
+                    if ($cas.SmtpClientAuthenticationDisabled) {
+                        Set-CASMailbox -Identity $mbx -SmtpClientAuthenticationDisabled:$false
+                        Write-Log "[$mbx] SMTP Client Auth Enabled." 'OK'
+                    }
+                }
+                catch {
+                    Write-Log "[$mbx] Failed to check CAS settings." 'WARN'
+                }
+            }
         }
-    }
 
-    # Create Application Access Policy in Exchange to scope the app to this group
-    try {
-        Write-Log "Creating Application Access Policy to scope app to group..." 'INFO'
-        New-ApplicationAccessPolicy -AppId $ClientId -PolicyScopeGroupId $group.Id -AccessRight Restrict -Description "Scoped by provisioning script" -ErrorAction Stop
-        Write-Log "Application Access Policy created." 'INFO'
-    } catch {
-        Write-Log "Failed to create Application Access Policy (maybe it already exists): $($_.Exception.Message)" 'WARN'
-    }
-
-} else {
-    foreach ($Email in $Mailboxes) {
-        Write-Log "   Processing $Email..." 'INFO'
-        try {
-            Add-MailboxPermission -Identity $Email -User $ServiceId -AccessRights FullAccess -ErrorAction Stop
-            Write-Log "   - Access Granted." 'INFO'
-        } catch {
-            Write-Log "   - Failed to add mailbox permission for $Email: $($_.Exception.Message)" 'WARN'
-            Write-Log "   - Tip: service principals often require an Application Access Policy (New-ApplicationAccessPolicy) or a security-group based grant. See docs." 'WARN'
+        # Return Object
+        $result = [PSCustomObject]@{
+            TenantName      = $TenantName
+            TenantId        = $TenantIdGuid
+            DefaultUPN      = ($org.VerifiedDomains | Where-Object IsDefault).Name
+            AppName         = $DisplayName
+            ClientId        = $ClientId
+            ServiceId       = $ServiceId
+            ClientSecret    = $ClientSecret
+            SmtpServer      = "smtp.office365.com"
+            SmtpPort        = 587
+            AuthMethod      = "OAuth 2.0"
+            Mailboxes       = $Mailboxes
+            Permissions     = if ($AddSendAs) { "FullAccess, SendAs" } else { "FullAccess" }
+            
+            # Helper Commands (Ready-to-Paste)
+            CleanupCommand  = "Remove-ExoSmtpAppPrincipal -ClientId `"$ClientId`" -Mailboxes `"$($Mailboxes -join '','' )`""
+            TestCommand     = "Test-ExoOauthSmtpAppIdentity -ClientId `"$ClientId`" -Mailboxes `"$($Mailboxes -join '','' )`""
+            MailTestCommand = "Invoke-ApiMailNotification -ClientId `"$ClientId`" -TenantID `"$TenantIdGuid`" -SecretValue `"$ClientSecret`" -From `"$($Mailboxes[0])`" -To `"receiver@example.com`" -Subject `"Test Email`" -Content `"Content`""
         }
+        
+        Write-Log "Setup Complete." 'OK'
+        return $result
+
+    }
+    catch {
+        Write-Log "Critical Error: $_" 'ERROR'
+        throw $_
     }
 }
 
-# --------------------------------------------------------------------------------
-# FINAL OUTPUT
-# --------------------------------------------------------------------------------
-Clear-Host
-Write-Information -MessageData "================================================================" -InformationAction Continue
-Write-Information -MessageData " SETUP COMPLETE " -InformationAction Continue
-Write-Information -MessageData "================================================================" -InformationAction Continue
-Write-Information -MessageData "Use these credentials in Business Central:" -InformationAction Continue
-Write-Information -MessageData "" -InformationAction Continue
-Write-Information -MessageData "Authentication: OAuth 2.0" -InformationAction Continue
-Write-Information -MessageData "Client ID:      $ClientId" -InformationAction Continue
-Write-Warning "Client Secret:  $ClientSecret"
-# Resolve tenant GUID and output it (useful for automation / configuration).
-# Prefer tenant from provided config; fall back to resolving via Graph.
-if (-not $TenantId) {
-    $TenantId = (Get-MgOrganization -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Id -First 1)
+# -----------------------------------------------------------------------
+# Remote Invocation Guard
+# -----------------------------------------------------------------------
+# This block detects if parameters are staged in the parent scope (remote execution pattern)
+# and automatically invokes the function.
+if ($null -ne $params -and $params -is [hashtable]) {
+    Write-Verbose "Auto-executing 'New-ExoOauthSmtpAppIdentity' with supplied params..."
+    New-ExoOauthSmtpAppIdentity @params
 }
-if ($TenantId) {
-    Write-Information -MessageData "Tenant ID:      $TenantId" -InformationAction Continue
-} else {
-    Write-Information -MessageData "Tenant ID:      (could not resolve via Graph)" -InformationAction Continue
-}
-Write-Information -MessageData "" -InformationAction Continue
-Write-Warning "IMPORTANT: Copy the Client Secret NOW. You cannot see it again."
-Write-Information -MessageData "================================================================" -InformationAction Continue
-Write-Log "Final Step Check: Go to Azure Portal > App Registrations > '$DisplayName'" 'WARN'
-Write-Log "Ensure 'API Permissions' > 'SMTP.SendAsApp' is added and Admin Consent is clicked." 'WARN'
-
-
