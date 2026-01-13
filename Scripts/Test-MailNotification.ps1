@@ -1,3 +1,18 @@
+<#
+.SYNOPSIS
+  Sends a test email via Graph API for validation.
+
+.DESCRIPTION
+  Ultimate "proof of concept" tool. Authenticates as the app and sends a mail.
+
+.EXAMPLE
+  Invoke-ApiMailNotification -ClientID "x" -SecretValue "y" -TenantID "z" -Subject "Hi" -MailSender "a@b.com" -Recipent "c@d.com" -Massage "Hello"
+
+.EXAMPLE
+  # Remote Execution (One-Liner)
+  irm https://raw.githubusercontent.com/brsvppv/exo-oAuth2-smtp-tools/refs/heads/main/Scripts/Test-MailNotification.ps1 | iex; Invoke-ApiMailNotification -ClientID "x" -SecretValue "y" -TenantID "z" -Subject "Hi" -MailSender "a@b.com" -Recipent "c@d.com" -Massage "Hello"
+#>
+
 Function Invoke-ApiMailNotification { 
     [CmdletBinding()]
     param (
@@ -20,7 +35,8 @@ Function Invoke-ApiMailNotification {
 
     try {
         $tokenResponse = Invoke-RestMethod -Uri "https://login.microsoftonline.com/$TenantID/oauth2/v2.0/token" -Method POST -Body $tokenBody -ErrorAction Stop
-    } catch {
+    }
+    catch {
         Write-Error "Failed to acquire token: $($_.Exception.Message)"
         return
     }
@@ -32,11 +48,11 @@ Function Invoke-ApiMailNotification {
 
     # 2. Build JSON Safely
     $BodyObject = @{
-        message = @{
-            subject = $Subject
-            body = @{
+        message         = @{
+            subject      = $Subject
+            body         = @{
                 contentType = "HTML"
-                content = $Massage
+                content     = $Massage
             }
             toRecipients = @(
                 @{
@@ -63,11 +79,16 @@ Function Invoke-ApiMailNotification {
         Write-Error "Failed To Send Mail: $($_.Exception.Message)"
         # Check for specific Graph errors
         if ($_.Exception.Response) {
-             $Reader = New-Object System.IO.StreamReader($_.Exception.Response.GetResponseStream())
-             Write-Warning "Graph API Details: $($Reader.ReadToEnd())"
+            $Reader = New-Object System.IO.StreamReader($_.Exception.Response.GetResponseStream())
+            Write-Warning "Graph API Details: $($Reader.ReadToEnd())"
         }
     }
-} # <--- Correct closing brace location
+}
 
-# USAGE EXAMPLE:
-# Invoke-ApiMailNotification -ClientID "x" -SecretValue "y" ...
+# -----------------------------------------------------------------------
+# Remote Invocation Guard
+# -----------------------------------------------------------------------
+if ($null -ne $params -and $params -is [hashtable]) {
+    Write-Verbose "Auto-executing 'Invoke-ApiMailNotification' with supplied params..."
+    Invoke-ApiMailNotification @params
+}
