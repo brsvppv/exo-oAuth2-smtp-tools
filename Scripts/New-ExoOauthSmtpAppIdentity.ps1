@@ -1,6 +1,3 @@
-# New-ExoOauthSmtpAppIdentity: Sets up SMTP OAuth for Business Central.
-# Documentation: https://github.com/brsvppv/exo-oAuth2-smtp-tools/blob/main/docs/New-ExoOauthSmtpAppIdentity.md
-
 function New-ExoOauthSmtpAppIdentity {
     [CmdletBinding()]
     param(
