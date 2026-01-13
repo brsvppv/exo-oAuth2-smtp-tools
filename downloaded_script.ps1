@@ -92,7 +92,7 @@ function New-ExoOauthSmtpAppIdentity {
 
         [Parameter(Mandatory = $false)]
         [ValidateSet("SMTP.Send", "SMTP.SendAsApp")]
-        [string]$SmtpPermission = "SMTP.SendAsApp",
+        [string]$SmtpPermission = "SMTP.Send",
 
         [Parameter(Mandatory = $false)]
         [switch]$EnableOrgSmtp,
@@ -205,31 +205,11 @@ function New-ExoOauthSmtpAppIdentity {
         # 6. Permissions (SMTP)
         if ($GrantSmtpPermission) {
             Write-Log "Granting SMTP Permission ($SmtpPermission)..." 'STEP'
-            # Use the well-known AppId for Exchange Online (globally consistent across all tenants)
-            $exoSp = Get-MgServicePrincipal -Filter "AppId eq '00000002-0000-0ff1-ce00-000000000000'" -ErrorAction SilentlyContinue | Select-Object -First 1
-            if (-not $exoSp) { throw "Could not find Exchange Online Service Principal (AppId: 00000002-0000-0ff1-ce00-000000000000)." }
+            $exoSp = Get-MgServicePrincipal -Filter "displayName eq 'Office 365 Exchange Online'" -ErrorAction SilentlyContinue | Select-Object -First 1
+            if (-not $exoSp) { throw "Could not find 'Office 365 Exchange Online' Service Principal." }
 
             $smtpRole = $exoSp.AppRoles | Where-Object { $_.Value -eq $SmtpPermission -and $_.AllowedMemberTypes -contains 'Application' }
-            
-            # Fallback Logic: If the requested permission isn't found, check for the alternative
-            if (-not $smtpRole) {
-                Write-Log "Requested role '$SmtpPermission' not found. Checking alternatives..." 'WARN'
-                if ($SmtpPermission -eq 'SMTP.Send') {
-                    $targetRole = 'SMTP.SendAsApp'
-                }
-                else {
-                    $targetRole = 'SMTP.Send'
-                }
-                
-                $smtpRole = $exoSp.AppRoles | Where-Object { $_.Value -eq $targetRole -and $_.AllowedMemberTypes -contains 'Application' }
-                
-                if ($smtpRole) {
-                    Write-Log "Found alternative role: '$targetRole'. Proceeding..." 'INFO'
-                    $SmtpPermission = $targetRole
-                }
-            }
-
-            if (-not $smtpRole) { throw "Neither 'SMTP.Send' nor 'SMTP.SendAsApp' found on EXO Service Principal." }
+            if (-not $smtpRole) { throw "Role '$SmtpPermission' not found on EXO Service Principal." }
 
             $existingAssignment = Get-MgServicePrincipalAppRoleAssignment -ServicePrincipalId $sp.Id -All | Where-Object { $_.ResourceId -eq $exoSp.Id -and $_.AppRoleId -eq $smtpRole.Id }
             if (-not $existingAssignment) {
@@ -359,3 +339,4 @@ if ($null -ne $params -and $params -is [hashtable]) {
     Write-Verbose "Auto-executing 'New-ExoOauthSmtpAppIdentity' with supplied params..."
     New-ExoOauthSmtpAppIdentity @params
 }
+
