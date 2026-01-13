@@ -124,6 +124,8 @@ function New-ExoOauthSmtpAppIdentity {
         if (-not $sp) {
             $sp = New-MgServicePrincipal -AppId $ClientId
             Write-Log "Created Service Principal: $($sp.Id)" 'OK'
+            Write-Log "Waiting for SP propagation..." 'INFO'
+            Start-Sleep -Seconds 15
         }
         else {
             Write-Log "Found Service Principal: $($sp.Id)" 'WARN'
@@ -161,7 +163,7 @@ function New-ExoOauthSmtpAppIdentity {
 
             $existingAssignment = Get-MgServicePrincipalAppRoleAssignment -ServicePrincipalId $sp.Id -All | Where-Object { $_.ResourceId -eq $exoSp.Id -and $_.AppRoleId -eq $smtpRole.Id }
             if (-not $existingAssignment) {
-                New-MgServicePrincipalAppRoleAssignment -ServicePrincipalId $sp.Id -ResourceId $exoSp.Id -AppRoleId $smtpRole.Id | Out-Null
+                New-MgServicePrincipalAppRoleAssignment -ServicePrincipalId $sp.Id -PrincipalId $sp.Id -ResourceId $exoSp.Id -AppRoleId $smtpRole.Id | Out-Null
                 Write-Log "Assigned '$SmtpPermission' (Admin Consent Applied)." 'OK'
             }
             else {
