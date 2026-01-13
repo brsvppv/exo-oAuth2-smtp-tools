@@ -5,14 +5,14 @@
 
 .DESCRIPTION
   Modular setup script for Business Central SMTP OAuth.
-  - Creates App Registration & Service Principal
-  - Generates Secrets
-  - Assigns Permissions (SMTP.Send/SendAs)
-  - Remediates SMTP Client Auth posture
+  * Creates App Registration and Service Principal
+  * Generates Secrets
+  * Assigns Permissions (SMTP.Send or SendAs)
+  * Remediates SMTP Client Auth posture
   
   Remote Usage (Parameter Object):
   $params = @{ Mailboxes = "info@contoso.com"; AddSendAs = $true }
-  $res = irm <url> | iex
+  $res = irm URL | iex
 
   Remote Usage (One-Liner):
   irm https://raw.githubusercontent.com/brsvppv/exo-oAuth2-smtp-tools/refs/heads/main/Scripts/New-ExoOauthSmtpAppIdentity.ps1 | iex; New-ExoOauthSmtpAppIdentity -Mailboxes "info@contoso.com" -AddSendAs
