@@ -34,7 +34,7 @@
 
 .EXAMPLE
   # 3. Remote Execution (One-Liner)
-  irm https://raw.githubusercontent.com/username/repo/main/Scripts/Remove-ExoSmtpAppPrincipal.ps1 | iex; Remove-ExoSmtpAppPrincipal -DisplayName "Old App"
+  irm https://raw.githubusercontent.com/brsvppv/exo-oAuth2-smtp-tools/refs/heads/main/Scripts/Remove-ExoSmtpAppPrincipal.ps1 | iex; Remove-ExoSmtpAppPrincipal -DisplayName "Old App"
 #>
 
 function Remove-ExoSmtpAppPrincipal {

@@ -15,7 +15,7 @@
   $res = irm <url> | iex
 
   Remote Usage (One-Liner):
-  irm <url> | iex; New-ExoOauthSmtpAppIdentity -Mailboxes "info@contoso.com" -AddSendAs
+  irm https://raw.githubusercontent.com/brsvppv/exo-oAuth2-smtp-tools/refs/heads/main/Scripts/New-ExoOauthSmtpAppIdentity.ps1 | iex; New-ExoOauthSmtpAppIdentity -Mailboxes "info@contoso.com" -AddSendAs
 
 .PARAMETER DisplayName
   App registration display name.
@@ -63,7 +63,7 @@
 .EXAMPLE
   # 5. Remote "One-Liner" Execution
   # Download and run in memory without saving the file.
-  irm https://raw.githubusercontent.com/username/repo/main/New-ExoOauthSmtpAppIdentity.ps1 | iex; New-ExoOauthSmtpAppIdentity -Mailboxes "info@contoso.com" -AddSendAs
+  irm https://raw.githubusercontent.com/brsvppv/exo-oAuth2-smtp-tools/refs/heads/main/Scripts/New-ExoOauthSmtpAppIdentity.ps1 | iex; New-ExoOauthSmtpAppIdentity -Mailboxes "info@contoso.com" -AddSendAs
 #>
 
 function New-ExoOauthSmtpAppIdentity {

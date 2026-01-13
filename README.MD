@@ -16,7 +16,7 @@ Run the script to create the app and configure Exchange Online automatically.
 
 **Or run remotely from GitHub (One-Liner):**
 ```powershell
-irm https://raw.githubusercontent.com/username/repo/main/Scripts/New-ExoOauthSmtpAppIdentity.ps1 | iex; New-ExoOauthSmtpAppIdentity -Mailboxes "info@contoso.com"
+irm https://raw.githubusercontent.com/brsvppv/exo-oAuth2-smtp-tools/refs/heads/main/Scripts/New-ExoOauthSmtpAppIdentity.ps1 | iex; New-ExoOauthSmtpAppIdentity -Mailboxes "info@contoso.com"
 ```
 
 *   **[Documentation: New-ExoOauthSmtpAppIdentity](docs/New-ExoOauthSmtpAppIdentity.md)**

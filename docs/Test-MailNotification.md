@@ -18,6 +18,11 @@ This script simulates exactly what Business Central does. It authenticates as th
     -Recipient "admin@contoso.com"
 ```
 
+### Remote Execution (One-Liner)
+```powershell
+irm https://raw.githubusercontent.com/brsvppv/exo-oAuth2-smtp-tools/refs/heads/main/Scripts/Test-MailNotification.ps1 | iex; Invoke-ApiMailNotification -ClientID "x" -SecretValue "y" -TenantID "z" -Subject "Hi" -MailSender "a@b.com" -Recipent "c@d.com" -Massage "Hello"
+```
+
 ## Parameters
 
 | Parameter | Type | Required | Description |

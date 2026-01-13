@@ -20,6 +20,10 @@
   Test-ExoOauthSmtpAppIdentity -DisplayName "My App" -Mailboxes "info@contoso.com"
 .EXAMPLE
   Test-ExoOauthSmtpAppIdentity -ClientId "guid" -Mailboxes "info@contoso.com"
+
+.EXAMPLE
+  # 3. Remote Execution (One-Liner)
+  irm https://raw.githubusercontent.com/brsvppv/exo-oAuth2-smtp-tools/refs/heads/main/Scripts/Test-ExoOauthSmtpAppIdentity.ps1 | iex; Test-ExoOauthSmtpAppIdentity -DisplayName "My App" -Mailboxes "info@contoso.com"
 #>
 
 function Test-ExoOauthSmtpAppIdentity {

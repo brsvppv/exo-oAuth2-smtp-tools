@@ -31,7 +31,7 @@ This script automates the end-to-end setup required to send emails from Business
 ### Remote Execution (One-Liner)
 You can run this script directly from GitHub without downloading it manually:
 ```powershell
-irm https://raw.githubusercontent.com/username/repo/main/Scripts/New-ExoOauthSmtpAppIdentity.ps1 | iex; New-ExoOauthSmtpAppIdentity -DisplayName "BC Mailer" -Mailboxes "admin@contoso.com" -AddSendAs
+irm https://raw.githubusercontent.com/brsvppv/exo-oAuth2-smtp-tools/refs/heads/main/Scripts/New-ExoOauthSmtpAppIdentity.ps1 | iex; New-ExoOauthSmtpAppIdentity -DisplayName "BC Mailer" -Mailboxes "admin@contoso.com" -AddSendAs
 ```
 
 ## Parameters

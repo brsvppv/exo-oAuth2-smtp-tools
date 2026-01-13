@@ -25,7 +25,7 @@ This script is a diagnostic tool to validate that your Azure App, Service Princi
 
 ### Remote Execution (One-Liner)
 ```powershell
-irm https://raw.githubusercontent.com/username/repo/main/Scripts/Test-ExoOauthSmtpAppIdentity.ps1 | iex; Test-ExoOauthSmtpAppIdentity -DisplayName "My App" -Mailboxes "info@contoso.com"
+irm https://raw.githubusercontent.com/brsvppv/exo-oAuth2-smtp-tools/refs/heads/main/Scripts/Test-ExoOauthSmtpAppIdentity.ps1 | iex; Test-ExoOauthSmtpAppIdentity -DisplayName "My App" -Mailboxes "info@contoso.com"
 ```
 
 ## Parameters
