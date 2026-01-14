@@ -269,6 +269,26 @@ function New-ExoOauthSmtpAppIdentity {
                     Write-Log "[$mbx] Failed to check CAS settings." 'WARN'
                 }
             }
+            
+            # Verify permissions were actually applied
+            Start-Sleep -Seconds 2
+            $fullAccessVerify = Get-MailboxPermission -Identity $mbx -User $ServiceId -ErrorAction SilentlyContinue
+            if (-not $fullAccessVerify) {
+                Write-Log "[$mbx] FullAccess verification failed - retrying..." 'WARN'
+                Start-Sleep -Seconds 3
+                Add-MailboxPermission -Identity $mbx -User $ServiceId -AccessRights FullAccess -AutoMapping:$false -ErrorAction SilentlyContinue | Out-Null
+                Write-Log "[$mbx] FullAccess retry complete." 'INFO'
+            }
+            
+            if ($AddSendAs) {
+                $sendAsVerify = Get-RecipientPermission -Identity $mbx -Trustee $ServiceId -ErrorAction SilentlyContinue
+                if (-not $sendAsVerify) {
+                    Write-Log "[$mbx] SendAs verification failed - retrying..." 'WARN'
+                    Start-Sleep -Seconds 3
+                    Add-RecipientPermission -Identity $mbx -Trustee $ServiceId -AccessRights SendAs -Confirm:$false -ErrorAction SilentlyContinue | Out-Null
+                    Write-Log "[$mbx] SendAs retry complete." 'INFO'
+                }
+            }
         }
 
         # Helper Commands (Ready-to-Paste)
@@ -302,7 +322,10 @@ function New-ExoOauthSmtpAppIdentity {
         
         Write-Log "Setup Complete." 'OK'
 
-        # Export to file logic
+        # Display result first so user sees credentials
+        Write-Output $result
+        
+        # THEN ask about export (after they've seen the credentials)
         $shouldExport = $false
         $exportFilePath = $ExportPath
 
@@ -310,7 +333,7 @@ function New-ExoOauthSmtpAppIdentity {
             $shouldExport = $true
         }
         elseif (-not $NoExportPrompt) {
-            $saveChoice = Read-Host "Do you want to save credentials to a file? (Y/N)"
+            $saveChoice = Read-Host "`nDo you want to save these credentials to a file? (Y/N)"
             if ($saveChoice -match '^[Yy]') {
                 $shouldExport = $true
                 $defaultFileName = "smtp-oauth-$($DisplayName -replace '[^a-zA-Z0-9]', '-')-$(Get-Date -Format 'yyyyMMdd').json"
@@ -341,8 +364,6 @@ function New-ExoOauthSmtpAppIdentity {
                 Write-Log "Failed to save file: $_" 'ERROR'
             }
         }
-
-        return $result
 
     }
     catch {
