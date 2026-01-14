@@ -1,31 +1,3 @@
-<#
-.SYNOPSIS
-  Validates Exchange Online SMTP OAuth configuration and permissions.
-
-.DESCRIPTION
-  Diagnostic tool to verify:
-  1. Service Principal existence.
-  2. Exchange Service Principal object synchronization.
-  3. Mailbox permissions (FullAccess, SendAs).
-  4. SMTP Client Authentication status.
-
-.PARAMETER DisplayName
-  Display name of the App Registration (used for lookup).
-.PARAMETER ClientId
-  (Optional) Client ID of the App Registration (Preferred lookup).
-.PARAMETER Mailboxes
-  List of mailboxes to validate permissions against.
-
-.EXAMPLE
-  Test-ExoOauthSmtpAppIdentity -DisplayName "My App" -Mailboxes "info@contoso.com"
-.EXAMPLE
-  Test-ExoOauthSmtpAppIdentity -ClientId "11111111-2222-3333-4444-555555555555" -Mailboxes "info@contoso.com"
-
-.EXAMPLE
-  # 3. Remote Execution (One-Liner)
-  irm https://raw.githubusercontent.com/brsvppv/exo-oAuth2-smtp-tools/refs/heads/main/Scripts/Test-ExoOauthSmtpAppIdentity.ps1 | iex; Test-ExoOauthSmtpAppIdentity -DisplayName "My App" -Mailboxes "info@contoso.com"
-#>
-
 function Test-ExoOauthSmtpAppIdentity {
     [CmdletBinding()]
     param(
@@ -140,13 +112,25 @@ function Test-ExoOauthSmtpAppIdentity {
                 try {
                     $cas = Get-CASMailbox -Identity $mbx -ErrorAction Stop
                     if ($cas.SmtpClientAuthenticationDisabled -eq $false) {
-                        Write-Log "  [+] SMTP Auth Enabled: YES" 'OK' 
+                        Write-Log "  [+] SMTP Auth Enabled: YES (Explicit)" 'OK' 
                     }
                     elseif ($cas.SmtpClientAuthenticationDisabled -eq $true) {
                         Write-Log "  [-] SMTP Auth Enabled: NO (Disabled explicitly)" 'ERROR'
                     }
                     else {
-                        Write-Log "  [?] SMTP Auth Enabled: UNKNOWN (Inherited?)" 'WARN'
+                        # Mailbox inherits from org - check org setting
+                        try {
+                            $orgConfig = Get-TransportConfig -ErrorAction Stop
+                            if ($orgConfig.SmtpClientAuthenticationDisabled -eq $true) {
+                                Write-Log "  [-] SMTP Auth Enabled: NO (Inherited from Org)" 'ERROR'
+                            }
+                            else {
+                                Write-Log "  [+] SMTP Auth Enabled: YES (Inherited from Org)" 'OK'
+                            }
+                        }
+                        catch {
+                            Write-Log "  [?] SMTP Auth: Inherited (could not check org setting)" 'WARN'
+                        }
                     }
                 }
                 catch {
@@ -161,9 +145,6 @@ function Test-ExoOauthSmtpAppIdentity {
     }
 }
 
-# -----------------------------------------------------------------------
-# Remote Invocation Guard
-# -----------------------------------------------------------------------
 if ($null -ne $params -and $params -is [hashtable]) {
     Write-Verbose "Auto-executing 'Test-ExoOauthSmtpAppIdentity' with supplied params..."
     Test-ExoOauthSmtpAppIdentity @params

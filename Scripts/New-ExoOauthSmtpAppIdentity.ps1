@@ -161,6 +161,24 @@ function New-ExoOauthSmtpAppIdentity {
 
             if (-not $smtpRole) { throw "Neither 'SMTP.Send' nor 'SMTP.SendAsApp' found on EXO Service Principal." }
 
+            # Update App Manifest with User.Read + SMTP permissions (Visual Fix for Azure Portal)
+            Write-Log "Updating App Manifest with permissions..." 'INFO'
+            $GraphSP = Get-MgServicePrincipal -Filter "AppId eq '00000003-0000-0000-c000-000000000000'" -ErrorAction SilentlyContinue
+            $UserReadId = "e1fe6dd8-ba31-4d61-89e7-88639da4683d"  # User.Read delegated scope
+            
+            $ResourceAccess = @(
+                @{
+                    ResourceAppId  = $exoSp.AppId
+                    ResourceAccess = @(@{ Id = $smtpRole.Id; Type = "Role" })
+                },
+                @{
+                    ResourceAppId  = $GraphSP.AppId
+                    ResourceAccess = @(@{ Id = $UserReadId; Type = "Scope" })
+                }
+            )
+            Update-MgApplication -ApplicationId $app.Id -RequiredResourceAccess $ResourceAccess
+            Write-Log "App Manifest updated (User.Read + $SmtpPermission)." 'OK'
+
             $existingAssignment = Get-MgServicePrincipalAppRoleAssignment -ServicePrincipalId $sp.Id -All | Where-Object { $_.ResourceId -eq $exoSp.Id -and $_.AppRoleId -eq $smtpRole.Id }
             if (-not $existingAssignment) {
                 New-MgServicePrincipalAppRoleAssignment -ServicePrincipalId $sp.Id -PrincipalId $sp.Id -ResourceId $exoSp.Id -AppRoleId $smtpRole.Id | Out-Null

@@ -1,42 +1,4 @@
-﻿<#
-.SYNOPSIS
-  Removes the Entra App, Service Principal, and all associated mailbox permissions.
-
-.DESCRIPTION
-  A robust cleanup utility for decommissioning Business Central SMTP OAuth setups.
-  This function performs a "scorched earth" removal of the identity:
-  1. Revokes 'FullAccess' permission from all specified mailboxes.
-  2. Revokes 'SendAs' permission from all specified mailboxes.
-  3. Deletes the Service Principal from Exchange Online.
-  4. Deletes the Service Principal (Enterprise App) from Entra ID.
-  5. Deletes the App Registration from Entra ID.
-
-.PARAMETER DisplayName
-  The display name of the App Registration to remove.
-  Used as the primary lookup method if ClientId is not provided.
-  WARNING: If multiple apps exist with the same name, this will fail for safety. Use -ClientId instead.
-
-.PARAMETER ClientId
-  (Optional) The exact Application (Client) ID (GUID) to remove.
-  Recommended for precision to avoid accidental deletion of similarly named apps.
-
-.PARAMETER Mailboxes
-  An array of SMTP addresses to cleanup.
-  Crucial for removing residual permissions. If omitted, permissions might be left on mailboxes.
-
-.EXAMPLE
-  # 1. Standard Cleanup by Name
-  Remove-ExoSmtpAppPrincipal -DisplayName "Organization SMTP Service" -Mailboxes "info@contoso.com"
-
-.EXAMPLE
-  # 2. Precise Cleanup by Client ID (Recommended)
-  Remove-ExoSmtpAppPrincipal -ClientId "11111111-2222-3333-4444-555555555555" -Mailboxes "sales@contoso.com"
-
-.EXAMPLE
-  # 3. Remote Execution (One-Liner)
-  irm https://raw.githubusercontent.com/brsvppv/exo-oAuth2-smtp-tools/refs/heads/main/Scripts/Remove-ExoSmtpAppPrincipal.ps1 | iex; Remove-ExoSmtpAppPrincipal -DisplayName "Old App"
-#>
-
+﻿
 function Remove-ExoSmtpAppPrincipal {
     [CmdletBinding(SupportsShouldProcess)]
     param(
@@ -247,9 +209,6 @@ function Remove-ExoSmtpAppPrincipal {
     }
 }
 
-# -----------------------------------------------------------------------
-# Remote Invocation Guard
-# -----------------------------------------------------------------------
 if ($null -ne $params -and $params -is [hashtable]) {
     Write-Verbose "Auto-executing 'Remove-ExoSmtpAppIdentity' with supplied params..."
     Remove-ExoSmtpAppPrincipal @params
