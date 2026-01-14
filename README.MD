@@ -1,12 +1,12 @@
-# 📧 Exchange Online SMTP OAuth Tools
+# Exchange Online SMTP OAuth Tools
 
-**Simplify and Secure Microsoft 365 SMTP Auth for Business Central.**
+**Simplify and Secure Microsoft 365 SMTP Auth for EXO.**
 
 This repository provides a production-grade PowerShell suite designed to automate the complex setup of **OAuth 2.0 SMTP** authentication. While optimized for **Microsoft Dynamics 365 Business Central**, these tools work for any modern application requiring secure Exchange Online mail flow.
 
 ---
 
-##  Key Features
+## Key Features
 
 *   **Safety-First Approach**: Every App Registration is tagged with a unique description. The cleanup script verifies this tag before deletion to prevent accidental removal of mission-critical apps.
 *   **Infrastructure Auto-Fix**: Detects and remediates disabled `SmtpClientAuthentication` settings at both the Tenant and Mailbox levels.
