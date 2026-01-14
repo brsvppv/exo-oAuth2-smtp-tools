@@ -36,23 +36,38 @@ Run these commands directly in your PowerShell terminal to provision and verify 
 
 ### 1. Provision the Identity
 Creates the App, Secret, and Mailbox permissions.
+
+**Remote (IRM):**
 ```powershell
-irm "https://raw.githubusercontent.com/brsvppv/exo-oAuth2-smtp-tools/main/Scripts/New-ExoOauthSmtpAppIdentity.ps1" | iex; 
-New-ExoOauthSmtpAppIdentity -DisplayName "BC Mailer" -Mailboxes "info@example.com" -AddSendAs
+irm "https://raw.githubusercontent.com/brsvppv/exo-oAuth2-smtp-tools/main/Scripts/New-ExoOauthSmtpAppIdentity.ps1" | iex; New-ExoOauthSmtpAppIdentity -DisplayName "BC Mailer" -Mailboxes "info@example.com" -AddSendAs
+```
+**Local:**
+```powershell
+. .\New-ExoOauthSmtpAppIdentity.ps1; New-ExoOauthSmtpAppIdentity -DisplayName "BC Mailer" -Mailboxes "info@example.com" -AddSendAs
 ```
 
 ### 2. Verify the Configuration
 Ensures Entra ID and Exchange Online are perfectly synced.
+
+**Remote (IRM):**
 ```powershell
-irm "https://raw.githubusercontent.com/brsvppv/exo-oAuth2-smtp-tools/main/Scripts/Test-ExoOauthSmtpAppIdentity.ps1" | iex; 
-Test-ExoOauthSmtpAppIdentity -ClientId "YOUR_CLIENT_ID" -Mailboxes "info@example.com"
+irm "https://raw.githubusercontent.com/brsvppv/exo-oAuth2-smtp-tools/main/Scripts/Test-ExoOauthSmtpAppIdentity.ps1" | iex; Test-ExoOauthSmtpAppIdentity -ClientId "YOUR_CLIENT_ID" -Mailboxes "info@example.com"
+```
+**Local:**
+```powershell
+. .\Test-ExoOauthSmtpAppIdentity.ps1; Test-ExoOauthSmtpAppIdentity -ClientId "YOUR_CLIENT_ID" -Mailboxes "info@example.com"
 ```
 
 ### 3. Send a Test Email (True SMTP OAuth)
 Validates the actual protocol-level mail flow.
+
+**Remote (IRM):**
 ```powershell
-irm "https://raw.githubusercontent.com/brsvppv/exo-oAuth2-smtp-tools/main/Scripts/Test-MailNotification.ps1" | iex; 
-Send-SmtpOAuthTestMail -ClientId "YOUR_ID" -ClientSecret "YOUR_SECRET" -TenantId "YOUR_TENANT" -From "info@example.com" -To "admin@example.com"
+irm "https://raw.githubusercontent.com/brsvppv/exo-oAuth2-smtp-tools/main/Scripts/Test-MailNotification.ps1" | iex; Send-SmtpOAuthTestMail -ClientId "YOUR_ID" -ClientSecret "YOUR_SECRET" -TenantId "YOUR_TENANT" -From "info@example.com" -To "admin@example.com"
+```
+**Local:**
+```powershell
+. .\Test-MailNotification.ps1; Send-SmtpOAuthTestMail -ClientId "YOUR_ID" -ClientSecret "YOUR_SECRET" -TenantId "YOUR_TENANT" -From "info@example.com" -To "admin@example.com"
 ```
 
 ---
