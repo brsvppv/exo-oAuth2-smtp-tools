@@ -205,7 +205,7 @@ function New-ExoOauthSmtpAppIdentity {
             $registered = $true
         }
         catch {
-            New-ServicePrincipal -AppId $ClientId -ServiceId $ServiceId -DisplayName $DisplayName | Out-Null
+            New-ServicePrincipal -AppId $ClientId -ObjectId $ServiceId -DisplayName $DisplayName | Out-Null
             Write-Log "Registered Service Principal in EXO." 'OK'
         }
 
