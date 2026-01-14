@@ -8,37 +8,37 @@ This repository provides a production-grade PowerShell suite designed to automat
 
 ## 🌟 Key Features
 
-*   ** Safety-First Approach**: Every App Registration is tagged with a unique description. The cleanup script verifies this tag before deletion to prevent accidental removal of mission-critical apps.
-*   ** Infrastructure Auto-Fix**: Detects and remediates disabled `SmtpClientAuthentication` settings at both the Tenant and Mailbox levels.
-*   ** Long-Term Stability**: Support for custom secret validity (up to 5 years) to minimize Business Central maintenance overhead.
-*   ** Remote-Ready**: Full support for in-memory execution via GitHub Raw URLs (no local script files required).
-*   ** Precision Diagnostics**: Verification scripts that audit everything from Entra ID service principals to mailbox-level ACLs.
+*   **🛡️ Safety-First Approach**: Every App Registration is tagged with a unique description. The cleanup script verifies this tag before deletion to prevent accidental removal of mission-critical apps.
+*   **🔧 Infrastructure Auto-Fix**: Detects and remediates disabled `SmtpClientAuthentication` settings at both the Tenant and Mailbox levels.
+*   **📋 JSON Export**: Automatically save your provisioning results (Client ID, Secret, Tenant ID) to a secure JSON file for easy import into Business Central.
+*   **🌐 Remote-Ready**: Full support for in-memory execution via GitHub Raw URLs (no local script files required).
+*   **🔎 Precision Diagnostics**: Verification scripts that audit everything from Entra ID service principals to mailbox-level ACLs, including "Inherited" SMTP settings.
 
 ---
 
-##  Quick Start (REMOTE EXECUTION)
+## 🚀 Quick Start (Remote Execution)
 
-You don't even need to clone this repo. Run these commands directly in your PowerShell terminal:
+Run these commands directly in your PowerShell terminal to provision and verify your SMTP setup:
 
 ### 1. Provision the Identity
-Creates the App, Secret, and Mailbox permissions in one go.
+Creates the App, Secret, and Mailbox permissions.
 ```powershell
-irm https://raw.githubusercontent.com/brsvppv/exo-oAuth2-smtp-tools/refs/heads/main/Scripts/New-ExoOauthSmtpAppIdentity.ps1 | iex; 
+irm "https://raw.githubusercontent.com/brsvppv/exo-oAuth2-smtp-tools/main/Scripts/New-ExoOauthSmtpAppIdentity.ps1" | iex; 
 New-ExoOauthSmtpAppIdentity -DisplayName "BC Mailer" -Mailboxes "info@contoso.com" -AddSendAs
 ```
 
 ### 2. Verify the Configuration
 Ensures Entra ID and Exchange Online are perfectly synced.
 ```powershell
-irm https://raw.githubusercontent.com/brsvppv/exo-oAuth2-smtp-tools/refs/heads/main/Scripts/Test-ExoOauthSmtpAppIdentity.ps1 | iex; 
-Test-ExoOauthSmtpAppIdentity -DisplayName "BC Mailer" -Mailboxes "info@contoso.com"
+irm "https://raw.githubusercontent.com/brsvppv/exo-oAuth2-smtp-tools/main/Scripts/Test-ExoOauthSmtpAppIdentity.ps1" | iex; 
+Test-ExoOauthSmtpAppIdentity -ClientId "YOUR_CLIENT_ID" -Mailboxes "info@contoso.com"
 ```
 
-### 3. Send a Test Email
-Validates the actual mail flow using your new Client ID and Secret.
+### 3. Send a Test Email (True SMTP OAuth)
+Validates the actual protocol-level mail flow.
 ```powershell
-irm https://raw.githubusercontent.com/brsvppv/exo-oAuth2-smtp-tools/refs/heads/main/Scripts/Test-MailNotification.ps1 | iex; 
-Invoke-ApiMailNotification -ClientId "YOUR_ID" -ClientSecret "YOUR_SECRET" -Sender "info@contoso.com" -Recipient "admin@contoso.com"
+irm "https://raw.githubusercontent.com/brsvppv/exo-oAuth2-smtp-tools/main/Scripts/Test-MailNotification.ps1" | iex; 
+Send-SmtpOAuthTestMail -ClientId "YOUR_ID" -ClientSecret "YOUR_SECRET" -TenantId "YOUR_TENANT" -From "info@contoso.com" -To "admin@contoso.com"
 ```
 
 ---
@@ -47,20 +47,20 @@ Invoke-ApiMailNotification -ClientId "YOUR_ID" -ClientSecret "YOUR_SECRET" -Send
 
 For detailed technical breakdowns, parameter lists, and advanced usage, see:
 
-*   [**Provisioning Guide**](docs/New-ExoOauthSmtpAppIdentity.md): Creating long-term, safe identities.
-*   [**Verification Guide**](docs/Test-ExoOauthSmtpAppIdentity.md): Diagnosing permission sync issues.
+*   [**Provisioning Guide**](docs/New-ExoOauthSmtpAppIdentity.md): Creating long-term, safe identities and JSON exports.
+*   [**Verification Guide**](docs/Test-ExoOauthSmtpAppIdentity.md): Diagnosing permission sync and inherited auth issues.
 *   [**Cleanup Guide**](docs/Remove-ExoSmtpAppPrincipal.md): Precision decommissioning of apps and permissions.
-*   [**SMTP Testing**](docs/Test-MailNotification.md): Validating end-to-end mail flow.
+*   [**SMTP Testing**](docs/Test-MailNotification.md): Validating end-to-end mail flow via SMTP vs Graph API.
 
 ---
 
 ## ⚠️ Requirements
 
 *   **Entra ID Permissions**: Global Administrator or (Application Administrator + Exchange Administrator).
-*   **PowerShell Modules**: The scripts will auto-load `Microsoft.Graph` and `ExchangeOnlineManagement`.
+*   **PowerShell Modules**: The scripts will auto-load `Microsoft.Graph.Applications` and `ExchangeOnlineManagement`.
 *   **Environment**: PowerShell 7+ (Recommended) or Windows PowerShell 5.1.
 
 ---
 
 ## 🤝 Contributing & Safety
-All changes are verified against [Pester](https://pester.dev/) unit tests. If you encounter issues or have improvements, feel free to open a PR or Issue.
+All changes are verified against [Pester](https://pester.dev/) unit tests.

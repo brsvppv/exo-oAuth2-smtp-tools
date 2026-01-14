@@ -33,7 +33,13 @@ function New-ExoOauthSmtpAppIdentity {
         [switch]$FixMailboxSmtp,
 
         [Parameter(Mandatory = $false)]
-        [int]$RetryMax = 8
+        [int]$RetryMax = 8,
+
+        [Parameter(Mandatory = $false)]
+        [string]$ExportPath,
+
+        [Parameter(Mandatory = $false)]
+        [switch]$NoExportPrompt
     )
 
     # Nested Helpers (Private)
@@ -289,6 +295,47 @@ function New-ExoOauthSmtpAppIdentity {
         }
         
         Write-Log "Setup Complete." 'OK'
+
+        # Export to file logic
+        $shouldExport = $false
+        $exportFilePath = $ExportPath
+
+        if ($ExportPath) {
+            $shouldExport = $true
+        }
+        elseif (-not $NoExportPrompt) {
+            $saveChoice = Read-Host "Do you want to save credentials to a file? (Y/N)"
+            if ($saveChoice -match '^[Yy]') {
+                $shouldExport = $true
+                $defaultFileName = "smtp-oauth-$($DisplayName -replace '[^a-zA-Z0-9]', '-')-$(Get-Date -Format 'yyyyMMdd').json"
+                $exportFilePath = Read-Host "Enter file path (or press Enter for '$defaultFileName')"
+                if ([string]::IsNullOrWhiteSpace($exportFilePath)) {
+                    $exportFilePath = Join-Path (Get-Location) $defaultFileName
+                }
+            }
+        }
+
+        if ($shouldExport -and $exportFilePath) {
+            try {
+                $exportData = @{
+                    TenantId     = $TenantIdGuid
+                    ClientId     = $ClientId
+                    ClientSecret = $ClientSecret
+                    AppName      = $DisplayName
+                    SmtpServer   = "smtp.office365.com"
+                    SmtpPort     = 587
+                    Mailboxes    = $Mailboxes
+                    CreatedAt    = (Get-Date).ToString('o')
+                }
+                $exportData | ConvertTo-Json -Depth 3 | Out-File -FilePath $exportFilePath -Encoding UTF8
+                Write-Log "Credentials saved to: $exportFilePath" 'OK'
+                Write-Log "WARNING: This file contains secrets. Store securely!" 'WARN'
+            }
+            catch {
+                Write-Log "Failed to save file: $_" 'ERROR'
+            }
+        }
+
         return $result
 
     }

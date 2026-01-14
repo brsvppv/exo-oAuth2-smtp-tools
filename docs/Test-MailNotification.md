@@ -1,90 +1,68 @@
 # Test-MailNotification
 
 ## Synopsis
-Sends a real test email using the OAuth 2.0 Client Credentials flow.
+Sends real test emails using either Microsoft Graph API or the SMTP protocol with OAuth 2.0.
 
 ## Description
-This script provides two functions for testing your SMTP OAuth setup:
+This script provides two distinct methods for validating your mail flow. This is the **"proof of pudding"** test to ensure your Client ID and Secret are functional.
 
-1. **Invoke-ApiMailNotification** - Uses Microsoft Graph API (requires `Mail.Send` permission)
-2. **Send-SmtpOAuthTestMail** - Uses SMTP with OAuth2 XOAUTH2 (requires `SMTP.SendAsApp`) - **Recommended for Business Central testing**
+### 1. SMTP OAuth (Recommended for Business Central)
+Simulates exactly how Business Central connects. It uses the `Send-SmtpOAuthTestMail` function to perform a raw SMTP handshake with XOAUTH2 authentication.
+*   **Port**: 587 (STARTTLS)
+*   **Auth**: SASL XOAUTH2
+*   **Scope**: `https://outlook.office365.com/.default`
 
-## Functions
+### 2. Graph API
+Uses the `Invoke-ApiMailNotification` function to send mail via the RESTful Microsoft Graph API.
+*   **Method**: POST to `/sendMail`
+*   **Auth**: Bearer Token (Client Credentials)
+*   **Scope**: `https://graph.microsoft.com/.default`
 
-### Send-SmtpOAuthTestMail (Recommended)
-Sends mail using actual SMTP protocol with OAuth2 authentication - exactly like Business Central does.
+## Usage
 
+### Local Usage
 ```powershell
+. .\Test-MailNotification.ps1
+Send-SmtpOAuthTestMail -ClientId "x" -ClientSecret "y" -TenantId "z" -From "a@b.com" -To "c@d.com"
+```
+
+### Remote Execution (irm | iex)
+
+#### SMTP OAuth Test (Best for BC)
+```powershell
+irm "https://raw.githubusercontent.com/brsvppv/exo-oAuth2-smtp-tools/main/Scripts/Test-MailNotification.ps1" | iex; 
 Send-SmtpOAuthTestMail `
     -ClientId "your-client-id" `
     -ClientSecret "your-client-secret" `
     -TenantId "your-tenant-id" `
     -From "no-reply@contoso.com" `
-    -To "admin@contoso.com" `
-    -Subject "Test Email" `
-    -Body "Hello from SMTP OAuth!"
+    -To "admin@contoso.com"
 ```
 
-**Parameters:**
-| Parameter | Type | Required | Default | Description |
-| :--- | :--- | :--- | :--- | :--- |
-| ClientId | String | Yes | | Application (Client) ID |
-| ClientSecret | String | Yes | | The client secret |
-| TenantId | String | Yes | | Directory (Tenant) ID |
-| From | String | Yes | | Sender email (must be authorized mailbox) |
-| To | String | Yes | | Recipient email address |
-| Subject | String | No | "SMTP OAuth Test" | Email subject |
-| Body | String | No | "This is a test..." | Email body text |
-| SmtpServer | String | No | smtp.office365.com | SMTP server |
-| Port | Int | No | 587 | SMTP port |
-
-### Invoke-ApiMailNotification
-Sends mail using Microsoft Graph API. Requires `Mail.Send` application permission.
-
+#### Graph API Test
 ```powershell
+irm "https://raw.githubusercontent.com/brsvppv/exo-oAuth2-smtp-tools/main/Scripts/Test-MailNotification.ps1" | iex; 
 Invoke-ApiMailNotification `
     -ClientID "your-client-id" `
     -SecretValue "your-client-secret" `
     -TenantID "your-tenant-id" `
-    -Subject "Test Email" `
     -MailSender "no-reply@contoso.com" `
     -Recipent "admin@contoso.com" `
-    -Massage "Hello from Graph API!"
+    -Subject "Test via Graph" `
+    -Massage "Hello from Graph API"
 ```
 
-**Parameters:**
-| Parameter | Type | Required | Alias | Description |
-| :--- | :--- | :--- | :--- | :--- |
-| ClientID | String | Yes | | Application (Client) ID |
-| SecretValue | String | Yes | | The client secret |
-| TenantID | String | Yes | | Directory (Tenant) ID |
-| Subject | String | Yes | | Email subject |
-| MailSender | String | Yes | From | Sender email address |
-| Recipent | String | Yes | To | Recipient email address |
-| Massage | String | Yes | Content | Email body (HTML supported) |
+## Parameters
 
-## Remote Execution
-
-### SMTP OAuth Test (Recommended)
-```powershell
-irm https://raw.githubusercontent.com/brsvppv/exo-oAuth2-smtp-tools/main/Scripts/Test-MailNotification.ps1 | iex; Send-SmtpOAuthTestMail -ClientId "x" -ClientSecret "y" -TenantId "z" -From "a@b.com" -To "c@d.com"
-```
-
-### Graph API Test
-```powershell
-irm https://raw.githubusercontent.com/brsvppv/exo-oAuth2-smtp-tools/main/Scripts/Test-MailNotification.ps1 | iex; Invoke-ApiMailNotification -ClientID "x" -SecretValue "y" -TenantID "z" -Subject "Hi" -MailSender "a@b.com" -Recipent "c@d.com" -Massage "Hello"
-```
+| Parameter | Method | Description |
+| :--- | :--- | :--- |
+| **ClientId** | Both | The Application (Client) ID from Azure Portal. |
+| **ClientSecret** / **SecretValue** | Both | The generated application secret. |
+| **TenantId** | Both | The Directory (Tenant) ID. |
+| **From** / **MailSender** | Both | The email address authorized for sending. |
+| **To** / **Recipent** | Both | The test recipient address. |
 
 ## Troubleshooting
-
-### Send-SmtpOAuthTestMail Errors
-| Error | Cause | Solution |
-| :--- | :--- | :--- |
-| "SMTP AUTH failed" | SMTP authentication disabled or wrong credentials | Run `New-ExoOauthSmtpAppIdentity` with `-FixMailboxSmtp` |
-| "Token acquisition failed" | Invalid Client ID/Secret/Tenant | Verify credentials match Azure portal |
-
-### Invoke-ApiMailNotification Errors
-| Error | Cause | Solution |
-| :--- | :--- | :--- |
-| "Access Denied" / 403 | Missing Mail.Send permission | Add Mail.Send permission in Azure portal |
-| "Mailbox not found" | User mailbox doesn't exist | Verify sender email is valid |
+*   **"STARTTLS failed"**: Ensure your network allows outbound traffic on port 587.
+*   **"SMTP AUTH failed (535 5.7.3)"**: Usually means `SmtpClientAuthentication` is disabled. Run verification with `Test-ExoOauthSmtpAppIdentity`.
+*   **"Access Denied (403)"**: (Graph only) Ensure the app has the `Mail.Send` Application permission consented.

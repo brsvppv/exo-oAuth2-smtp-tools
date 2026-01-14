@@ -36,7 +36,8 @@ Use this script to decommission an SMTP App Identity. It performs a clean sweep:
 
 ### Remote Execution (One-Liner)
 ```powershell
-irm https://raw.githubusercontent.com/brsvppv/exo-oAuth2-smtp-tools/refs/heads/main/Scripts/Remove-ExoSmtpAppPrincipal.ps1 | iex; Remove-ExoSmtpAppPrincipal -DisplayName "Org SMTP" -Mailboxes "info@contoso.com"
+irm "https://raw.githubusercontent.com/brsvppv/exo-oAuth2-smtp-tools/main/Scripts/Remove-ExoSmtpAppPrincipal.ps1" | iex; 
+Remove-ExoSmtpAppPrincipal -DisplayName "Org SMTP" -Mailboxes "info@contoso.com"
 ```
 **Technical Breakdown:**
 1.  **Stateless Deletion**: Decommissions the setup using a single command without requiring you to have any local script files.

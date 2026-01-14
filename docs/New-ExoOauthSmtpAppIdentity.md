@@ -7,10 +7,12 @@ Provisions an Azure AD Application and Exchange Online Service Principal for use
 This script automates the end-to-end setup required to send emails from Business Central using Exchange Online via OAuth 2.0. It performs the following actions:
 1.  **Creates an App Registration** in Entra ID (Azure AD).
 2.  **Generates a Client Secret** (valid for 2 years by default).
-3.  **Creates a Service Principal** (Enterprise App) for the application.
-4.  **Grants API Permissions:** Assigns `SMTP.Send` or `SMTP.SendAsApp` to the Service Principal and performs Admin Consent.
-5.  **Assigns Mailbox Permissions:** Grants `FullAccess` and optionally `SendAs` to the specified mailboxes.
-6.  **Fixes SMTP Posture:** Optionally enables SMTP Client Authentication for the tenant and specific mailboxes if they are disabled.
+3.  **App Manifest Sync**: Updates the app with `User.Read` (Delegated) and `SMTP.SendAsApp` (Application) for better visibility in the Azure Portal.
+4.  **Creates a Service Principal** (Enterprise App) for the application.
+5.  **Grants API Authorization**: Assigns the requested SMTP role and performs Admin Consent using the Service Principal ID for reliable permission propagation.
+6.  **Registers in Exchange**: Uses `New-ServicePrincipal` to sync the Entra identity to Exchange Online.
+7.  **Assigns Mailbox Permissions**: Grants `FullAccess` and optionally `SendAs` to the specified mailboxes.
+8.  **Fixes SMTP Posture**: Optionally enables SMTP Client Authentication for the tenant and specific mailboxes.
 
 ## Usage
 
@@ -21,62 +23,109 @@ This script automates the end-to-end setup required to send emails from Business
 **Technical Breakdown:**
 1.  **Identity Creation**: Provisions an Entra App Registration named "Organization SMTP Service".
 2.  **Secret Stamping**: Generates a secure client secret valid for **2 years**.
-3.  **API Authorization**: Automatically grants the `SMTP.Send` permission and performs a global Admin Consent.
+3.  **API Authorization**: Automatically grants the `SMTP.SendAsApp` permission and performs a global Admin Consent.
 4.  **Mailbox Access**: Configures Exchange Online to allow this app `FullAccess` to `info@contoso.com`.
 
-### Full Setup (Recommended for Business Central)
+### Full Setup with Export (Recommended)
 ```powershell
 .\New-ExoOauthSmtpAppIdentity.ps1 `
-    -Mailboxes "no-reply@contoso.com", "sales@contoso.com" `
+    -DisplayName "BC ERP Mailer" `
+    -Mailboxes "no-reply@contoso.com" `
     -AddSendAs `
-    -EnableOrgSmtp `
-    -FixMailboxSmtp
+    -FixMailboxSmtp `
+    -ExportPath "C:\Setup\bc-smtp-config.json"
 ```
 **Technical Breakdown:**
 1.  **Safety Tagging**: Creates the Entra app with the description `"Created by ExoOauthSmtpTools script"` for future safety verification.
-2.  **Doubled Permissions**: Since `-AddSendAs` is used, the script performs **4 permission assignments**:
-    *   `no-reply@contoso.com`: Grants `FullAccess` + **`SendAs`**.
-    *   `sales@contoso.com`: Grants `FullAccess` + **`SendAs`**.
-3.  **Infrastructure Remediation**:
-    *   **Org-Wide**: Ensures `SmtpClientAuthenticationDisabled` is set to `$false` for the tenant.
-    *   **Mailbox-Specific**: Ensures both mailboxes have SMTP Client Auth enabled (bypassing any restrictive tenant-wide defaults).
-4.  **Integration Ready**: Returns a clean object with TenantID, ClientID, and Secret for Business Central.
-
-> [!TIP]
-> **Why -AddSendAs is vital**: Business Central often tries to send mail "From" the specific mailbox address. Without `SendAs`, M365 might reject the mail even with `FullAccess`. This switch prevents "Status: 5.7.1 Client was not authenticated to send anonymous mail" errors.
+2.  **App Manifest Sync**: Ensures the portal visually shows `User.Read` and `SMTP.SendAsApp` permissions.
+3.  **Permissions**: Grants `FullAccess` + **`SendAs`** for the specified mailbox. In M365, `FullAccess` alone is often not enough to send mail *as* the mailbox address.
+4.  **Infrastructure Remediation**: Ensures the mailbox has SMTP Client Auth enabled (bypassing any restrictive tenant-wide defaults).
+5.  **Integration Ready**: Exports a JSON file with TenantID, ClientID, and Secret for Business Central.
 
 ### Remote Execution (One-Liner)
-You can run this script directly from GitHub without downloading it manually:
 ```powershell
-irm https://raw.githubusercontent.com/brsvppv/exo-oAuth2-smtp-tools/refs/heads/main/Scripts/New-ExoOauthSmtpAppIdentity.ps1 | iex; New-ExoOauthSmtpAppIdentity -DisplayName "BC Mailer" -Mailboxes "admin@contoso.com" -AddSendAs
+irm "https://raw.githubusercontent.com/brsvppv/exo-oAuth2-smtp-tools/main/Scripts/New-ExoOauthSmtpAppIdentity.ps1" | iex; 
+New-ExoOauthSmtpAppIdentity -DisplayName "BC Mailer" -Mailboxes "admin@contoso.com" -AddSendAs
 ```
 **Technical Breakdown:**
-1.  **In-Memory Load**: Downloads the script directly from GitHub and injects the function into your current PowerShell session (no local file created).
-2.  **Identity Provisioning**: Creates an app named "BC Mailer" with all required API scopes.
-3.  **Permissions**: Finalizes by granting `FullAccess` and `SendAs` to the admin mailbox.
-
+1.  **In-Memory Load**: Downloads the script directly from GitHub and injects the function into your current PowerShell session.
+2.  **Deployment**: Creates the "BC Mailer" identity and grants required permissions in a single stateless workflow.
 
 ## Parameters & Switches
 
 ### Identity Settings
-*   **`-DisplayName`** (String, Default: `"Organization SMTP Service"`): Sets the name of the App Registration in Entra ID. This is how the identity appears in the "App registrations" portal.
-*   **`-SecretName`** (String, Default: `"Organization SMTP Secret"`): Sets the description label for the generated client secret. Useful for auditing (e.g., "BC Production Secret").
-*   **`-YearsValid`** (Int, Default: `2`): Determines how many years the secret remains valid. Maximum recommended is 5. After this period, you must generate a new secret and update Business Central.
+*   **`-DisplayName`** (String, Default: `"Organization SMTP Service"`): Sets the name of the App Registration in Entra ID.
+*   **`-SecretName`** (String, Default: `"Organization SMTP Secret"`): Sets the description label for the generated client secret.
+*   **`-YearsValid`** (Int, Default: `2`): Secret validity period (Max recommended is 5).
+*   **`-MultiTenant`** (Switch): Configures the app as Multi-Tenant (AzureADMultipleOrgs). Default is Single-Tenant.
 
 ### Mailbox & Permissions
-*   **`-Mailboxes`** (String[], **Mandatory**): A comma-separated list of email addresses. The identity will be authorized to send mail through these specific accounts.
-*   **`-AddSendAs`** (Switch): **Highly Recommended.** By default, the script grants `FullAccess`. This switch adds the `SendAs` right. In M365, `FullAccess` alone is often not enough to send mail *as* the mailbox address; `SendAs` ensures the "From" address is correctly authenticated.
-*   **`-SmtpPermission`** (String, Default: `"SMTP.Send"`): Defines the API scope granted in Entra ID. 
-    *   `SMTP.Send`: Standard scope for sending mail as the signed-in user or authorized mailbox.
-    *   `SMTP.SendAsApp`: A broader scope used for automated services.
+*   **`-Mailboxes`** (String[], **Mandatory**): List of email addresses the app is authorized to send from.
+*   **`-AddSendAs`** (Switch): **Highly Recommended.** Adds `SendAs` permission alongside `FullAccess`.
+*   **`-SmtpPermission`** (String, Default: `"SMTP.SendAsApp"`): Defines the API scope granted. Valid options: `SMTP.Send`, `SMTP.SendAsApp`.
 
-### Infrastructure & Remediation
-*   **`-EnableOrgSmtp`** (Switch): A "fix-it" switch for the whole tenant. If your organization has disabled SMTP Auth globally (Security Defaults), this switch attempts to enable the `SmtpClientAuthenticationDisabled` organization setting to allow apps to connect.
-*   **`-FixMailboxSmtp`** (Switch): A "fix-it" switch for individual mailboxes. If a specific mailbox has SMTP Auth disabled via its own policy, this switch enables it.
-*   **`-GrantSmtpPermission`** (Bool, Default: `$true`): When true, the script handles the Entra ID API permission grant and Admin Consent automatically. Set to $false only if you intend to perform consent manually in the Azure Portal.
+### Infrastructure & Export
+*   **`-EnableOrgSmtp`** (Switch): Globally enables SMTP Client Authentication for the tenant.
+*   **`-FixMailboxSmtp`** (Switch): Enables SMTP Client Authentication for the individual target mailboxes.
+*   **`-ExportPath`** (String): Path to save the resulting configuration as a JSON file.
+*   **`-NoExportPrompt`** (Switch): Skips the interactive prompt to save the configuration file at the end.
+
+## 💡 Advanced Examples
+
+### Multiple Shared Mailboxes
+Assign access to an entire team of shared mailboxes in one command:
+```powershell
+.\New-ExoOauthSmtpAppIdentity.ps1 `
+    -DisplayName "Corporate SMTP Relay" `
+    -Mailboxes "info@contoso.com", "support@contoso.com", "billing@contoso.com" `
+    -AddSendAs
+```
+
+### Long-Term Identity (5 Years)
+Generate a secret that won't expire for 5 years to minimize maintenance:
+```powershell
+.\New-ExoOauthSmtpAppIdentity.ps1 `
+    -DisplayName "BC Legacy App" `
+    -Mailboxes "no-reply@contoso.com" `
+    -YearsValid 5
+```
+
+### Automated DevOps Pipeline (No Interaction)
+Provision an app and export the credentials to a specific path without any user prompts:
+```powershell
+.\New-ExoOauthSmtpAppIdentity.ps1 `
+    -DisplayName "CI-CD-Mailer" `
+    -Mailboxes "dev@contoso.com" `
+    -ExportPath ".\vault\credentials.json" `
+    -NoExportPrompt
+```
+
+### ISV Multi-Tenant Setup
+Create an application registration that can be used across multiple customer tenants:
+```powershell
+.\New-ExoOauthSmtpAppIdentity.ps1 `
+    -DisplayName "AppSource Connector" `
+    -Mailboxes "service@contoso.com" `
+    -MultiTenant
+```
+
+### Urgent Infrastructure Fix
+Enable SMTP Auth at the tenant level if it was previously blocked by "Security Defaults":
+```powershell
+.\New-ExoOauthSmtpAppIdentity.ps1 `
+    -Mailboxes "urgent@contoso.com" `
+    -EnableOrgSmtp `
+    -FixMailboxSmtp
+```
 
 ## Outputs
- The script outputs the following values to the console, which are required for Business Central setup:
-*   **Tenant ID**
-*   **Client ID**
-*   **Client Secret** (Shown once, must be copied immediately)
+The script returns a `PSCustomObject` containing:
+*   **TenantId**: The Directory ID.
+*   **ClientId**: The Application ID.
+*   **ClientSecret**: The generated secret (Cleartext).
+*   **CleanupCommand**: Pre-formatted command to remove this exact setup.
+*   **TestCommand**: Pre-formatted command to verify the setup.
+*   **MailTestCommand**: Pre-formatted command to send a test email.
+
+> [!WARNING]
+> **Credential Safety**: The output object and the exported JSON file contain the **Client Secret in cleartext**. Store these securely and delete the JSON file once the configuration in Business Central is complete.
