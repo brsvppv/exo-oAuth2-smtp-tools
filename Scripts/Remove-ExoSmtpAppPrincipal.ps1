@@ -57,7 +57,7 @@
             }
             # Exchange might already be connected
             if (-not (Get-PSSession | Where-Object { $_.ConfigurationName -eq 'Microsoft.Exchange' })) {
-                Connect-ExchangeOnline -ErrorAction Stop | Out-Null
+                Connect-ExchangeOnline -ShowBanner:$false -ErrorAction Stop | Out-Null
             }
         }
         catch {

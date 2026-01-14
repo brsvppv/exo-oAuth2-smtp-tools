@@ -197,7 +197,7 @@ function New-ExoOauthSmtpAppIdentity {
 
         # 7. Connect Exchange & Register
         Write-Log "Connecting to Exchange Online..." 'STEP'
-        Connect-ExchangeOnline | Out-Null
+        Connect-ExchangeOnline -ShowBanner:$false | Out-Null
         
         $registered = $false
         try {
