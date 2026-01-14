@@ -11,9 +11,11 @@ Use this script to decommission an SMTP App Identity. It performs a clean sweep:
 
 ## Usage
 
-### Remove by Display Name
+### Local Usage (Dot-Sourcing)
+
+####Remove by Display Name
 ```powershell
-.\Remove-ExoSmtpAppPrincipal.ps1 -DisplayName "Organization SMTP Service"
+. .\Remove-ExoSmtpAppPrincipal.ps1; Remove-ExoSmtpAppPrincipal -DisplayName "Organization SMTP Service"
 ```
 **Technical Breakdown:**
 1.  **Identity Discovery**: Searches for the App Registration and Service Principal by the friendly name.
@@ -24,9 +26,9 @@ Use this script to decommission an SMTP App Identity. It performs a clean sweep:
     *   Removes the **App Registration** from Entra ID.
 4.  **Limitation**: Since no mailboxes were provided, the **FullAccess/SendAs permissions remain** on the mailboxes. This is useful for "re-creation" but not for full decommissioning.
 
-### Remove by Client ID (Recommended)
+#### Remove by Client ID (Recommended)
 ```powershell
-.\Remove-ExoSmtpAppPrincipal.ps1 -ClientId "11111111-2222-3333-4444-555555555555" -Mailboxes "info@contoso.com"
+. .\Remove-ExoSmtpAppPrincipal.ps1; Remove-ExoSmtpAppPrincipal -ClientId "11111111-2222-3333-4444-555555555555" -Mailboxes "info@contoso.com"
 ```
 **Technical Breakdown:**
 1.  **Guaranteed Precision**: Targets the specific App using its unique GUID.

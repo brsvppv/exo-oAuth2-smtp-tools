@@ -14,14 +14,16 @@ This script is a diagnostic tool to validate that your Azure App, Service Princi
 
 ## Usage
 
-### Check an App by Display Name
+### Local Usage (Dot-Sourcing)
+
+#### Check an App by Display Name
 ```powershell
-.\Test-ExoOauthSmtpAppIdentity.ps1 -DisplayName "Organization SMTP Service" -Mailboxes "info@contoso.com"
+. .\Test-ExoOauthSmtpAppIdentity.ps1; Test-ExoOauthSmtpAppIdentity -DisplayName "Organization SMTP Service" -Mailboxes "info@contoso.com"
 ```
 
-### Check using Client ID (Recommended)
+#### Check using Client ID (Recommended)
 ```powershell
-.\Test-ExoOauthSmtpAppIdentity.ps1 -ClientId "11111111-2222-3333-4444-555555555555" -Mailboxes "info@contoso.com"
+. .\Test-ExoOauthSmtpAppIdentity.ps1; Test-ExoOauthSmtpAppIdentity -ClientId "11111111-2222-3333-4444-555555555555" -Mailboxes "info@contoso.com"
 ```
 
 ### Remote Execution (One-Liner)

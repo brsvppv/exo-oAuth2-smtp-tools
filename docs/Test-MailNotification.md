@@ -20,10 +20,9 @@ Uses the `Invoke-ApiMailNotification` function to send mail via the RESTful Micr
 
 ## Usage
 
-### Local Usage
+### Local Usage (Dot-Sourcing)
 ```powershell
-. .\Test-MailNotification.ps1
-Send-SmtpOAuthTestMail -ClientId "x" -ClientSecret "y" -TenantId "z" -From "a@b.com" -To "c@d.com"
+. .\Test-MailNotification.ps1; Send-SmtpOAuthTestMail -ClientId "x" -ClientSecret "y" -TenantId "z" -From "a@b.com" -To "c@d.com"
 ```
 
 ### Remote Execution (irm | iex)

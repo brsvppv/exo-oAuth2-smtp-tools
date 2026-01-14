@@ -16,9 +16,12 @@ This script automates the end-to-end setup required to send emails from Business
 
 ## Usage
 
-### Basic Usage
+### Local Usage (Dot-Sourcing)
+First, load the function into your session, then call it:
+
+#### Basic Setup
 ```powershell
-.\New-ExoOauthSmtpAppIdentity.ps1 -Mailboxes "info@contoso.com"
+. .\New-ExoOauthSmtpAppIdentity.ps1; New-ExoOauthSmtpAppIdentity -Mailboxes "info@contoso.com"
 ```
 **Technical Breakdown:**
 1.  **Identity Creation**: Provisions an Entra App Registration named "Organization SMTP Service".
@@ -26,14 +29,9 @@ This script automates the end-to-end setup required to send emails from Business
 3.  **API Authorization**: Automatically grants the `SMTP.SendAsApp` permission and performs a global Admin Consent.
 4.  **Mailbox Access**: Configures Exchange Online to allow this app `FullAccess` to `info@contoso.com`.
 
-### Full Setup with Export (Recommended)
+#### Full Setup with Export (Recommended)
 ```powershell
-.\New-ExoOauthSmtpAppIdentity.ps1 `
-    -DisplayName "BC ERP Mailer" `
-    -Mailboxes "no-reply@contoso.com" `
-    -AddSendAs `
-    -FixMailboxSmtp `
-    -ExportPath "C:\Setup\bc-smtp-config.json"
+. .\New-ExoOauthSmtpAppIdentity.ps1; New-ExoOauthSmtpAppIdentity -DisplayName "BC ERP Mailer" -Mailboxes "no-reply@contoso.com" -AddSendAs -FixMailboxSmtp -ExportPath "C:\Setup\bc-smtp-config.json"
 ```
 **Technical Breakdown:**
 1.  **Safety Tagging**: Creates the Entra app with the description `"Created by ExoOauthSmtpTools script"` for future safety verification.
@@ -75,47 +73,31 @@ New-ExoOauthSmtpAppIdentity -DisplayName "BC Mailer" -Mailboxes "admin@contoso.c
 ### Multiple Shared Mailboxes
 Assign access to an entire team of shared mailboxes in one command:
 ```powershell
-.\New-ExoOauthSmtpAppIdentity.ps1 `
-    -DisplayName "Corporate SMTP Relay" `
-    -Mailboxes "info@contoso.com", "support@contoso.com", "billing@contoso.com" `
-    -AddSendAs
+. .\New-ExoOauthSmtpAppIdentity.ps1; New-ExoOauthSmtpAppIdentity -DisplayName "Corporate SMTP Relay" -Mailboxes "info@contoso.com", "support@contoso.com", "billing@contoso.com" -AddSendAs
 ```
 
 ### Long-Term Identity (5 Years)
 Generate a secret that won't expire for 5 years to minimize maintenance:
 ```powershell
-.\New-ExoOauthSmtpAppIdentity.ps1 `
-    -DisplayName "BC Legacy App" `
-    -Mailboxes "no-reply@contoso.com" `
-    -YearsValid 5
+. .\New-ExoOauthSmtpAppIdentity.ps1; New-ExoOauthSmtpAppIdentity -DisplayName "BC Legacy App" -Mailboxes "no-reply@contoso.com" -YearsValid 5
 ```
 
 ### Automated DevOps Pipeline (No Interaction)
 Provision an app and export the credentials to a specific path without any user prompts:
 ```powershell
-.\New-ExoOauthSmtpAppIdentity.ps1 `
-    -DisplayName "CI-CD-Mailer" `
-    -Mailboxes "dev@contoso.com" `
-    -ExportPath ".\vault\credentials.json" `
-    -NoExportPrompt
+. .\New-ExoOauthSmtpAppIdentity.ps1; New-ExoOauthSmtpAppIdentity -DisplayName "CI-CD-Mailer" -Mailboxes "dev@contoso.com" -ExportPath ".\vault\credentials.json" -NoExportPrompt
 ```
 
 ### ISV Multi-Tenant Setup
 Create an application registration that can be used across multiple customer tenants:
 ```powershell
-.\New-ExoOauthSmtpAppIdentity.ps1 `
-    -DisplayName "AppSource Connector" `
-    -Mailboxes "service@contoso.com" `
-    -MultiTenant
+. .\New-ExoOauthSmtpAppIdentity.ps1; New-ExoOauthSmtpAppIdentity -DisplayName "AppSource Connector" -Mailboxes "service@contoso.com" -MultiTenant
 ```
 
 ### Urgent Infrastructure Fix
 Enable SMTP Auth at the tenant level if it was previously blocked by "Security Defaults":
 ```powershell
-.\New-ExoOauthSmtpAppIdentity.ps1 `
-    -Mailboxes "urgent@contoso.com" `
-    -EnableOrgSmtp `
-    -FixMailboxSmtp
+. .\New-ExoOauthSmtpAppIdentity.ps1; New-ExoOauthSmtpAppIdentity -Mailboxes "urgent@contoso.com" -EnableOrgSmtp -FixMailboxSmtp
 ```
 
 ## Outputs
