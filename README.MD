@@ -16,7 +16,21 @@ This repository provides a production-grade PowerShell suite designed to automat
 
 ---
 
-## 🚀 Quick Start (Remote Execution)
+## 📋 Prerequisites
+
+Ensure you have the following PowerShell modules installed before running the scripts:
+
+```powershell
+# Install required modules (if not already present)
+Install-Module -Name Microsoft.Graph.Applications -Scope CurrentUser
+Install-Module -Name Microsoft.Graph.Identity.DirectoryManagement -Scope CurrentUser
+Install-Module -Name ExchangeOnlineManagement -Scope CurrentUser
+```
+
+> [!NOTE]
+> The scripts include automatic check/load logic, but manual installation is recommended for the best experience.
+
+---
 
 Run these commands directly in your PowerShell terminal to provision and verify your SMTP setup:
 
