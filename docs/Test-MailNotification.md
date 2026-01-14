@@ -34,8 +34,8 @@ Send-SmtpOAuthTestMail `
     -ClientId "your-client-id" `
     -ClientSecret "your-client-secret" `
     -TenantId "your-tenant-id" `
-    -From "no-reply@contoso.com" `
-    -To "admin@contoso.com"
+    -From "no-reply@example.com" `
+    -To "admin@example.com"
 ```
 
 #### Graph API Test
@@ -45,8 +45,8 @@ Invoke-ApiMailNotification `
     -ClientID "your-client-id" `
     -SecretValue "your-client-secret" `
     -TenantID "your-tenant-id" `
-    -MailSender "no-reply@contoso.com" `
-    -Recipent "admin@contoso.com" `
+    -MailSender "no-reply@example.com" `
+    -Recipent "admin@example.com" `
     -Subject "Test via Graph" `
     -Massage "Hello from Graph API"
 ```

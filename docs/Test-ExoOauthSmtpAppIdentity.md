@@ -18,18 +18,18 @@ This script is a diagnostic tool to validate that your Azure App, Service Princi
 
 #### Check an App by Display Name
 ```powershell
-. .\Test-ExoOauthSmtpAppIdentity.ps1; Test-ExoOauthSmtpAppIdentity -DisplayName "Organization SMTP Service" -Mailboxes "info@contoso.com"
+. .\Test-ExoOauthSmtpAppIdentity.ps1; Test-ExoOauthSmtpAppIdentity -DisplayName "Organization SMTP Service" -Mailboxes "info@example.com"
 ```
 
 #### Check using Client ID (Recommended)
 ```powershell
-. .\Test-ExoOauthSmtpAppIdentity.ps1; Test-ExoOauthSmtpAppIdentity -ClientId "11111111-2222-3333-4444-555555555555" -Mailboxes "info@contoso.com"
+. .\Test-ExoOauthSmtpAppIdentity.ps1; Test-ExoOauthSmtpAppIdentity -ClientId "11111111-2222-3333-4444-555555555555" -Mailboxes "info@example.com"
 ```
 
 ### Remote Execution (One-Liner)
 ```powershell
 irm "https://raw.githubusercontent.com/brsvppv/exo-oAuth2-smtp-tools/main/Scripts/Test-ExoOauthSmtpAppIdentity.ps1" | iex; 
-Test-ExoOauthSmtpAppIdentity -DisplayName "My App" -Mailboxes "info@contoso.com"
+Test-ExoOauthSmtpAppIdentity -DisplayName "My App" -Mailboxes "info@example.com"
 ```
 
 ## Parameters & Switches

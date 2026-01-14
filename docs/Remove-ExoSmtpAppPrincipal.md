@@ -28,18 +28,18 @@ Use this script to decommission an SMTP App Identity. It performs a clean sweep:
 
 #### Remove by Client ID (Recommended)
 ```powershell
-. .\Remove-ExoSmtpAppPrincipal.ps1; Remove-ExoSmtpAppPrincipal -ClientId "11111111-2222-3333-4444-555555555555" -Mailboxes "info@contoso.com"
+. .\Remove-ExoSmtpAppPrincipal.ps1; Remove-ExoSmtpAppPrincipal -ClientId "11111111-2222-3333-4444-555555555555" -Mailboxes "info@example.com"
 ```
 **Technical Breakdown:**
 1.  **Guaranteed Precision**: Targets the specific App using its unique GUID.
 2.  **Safety Tag Check**: Verifies if the app has the `"Created by..."` description. If missing, it prompts for a manual `YES` confirmation.
-3.  **Permission Revocation**: Scans the `info@contoso.com` mailbox and explicitly removes the specific `FullAccess` and `SendAs` ACLs associated with this app.
+3.  **Permission Revocation**: Scans the `info@example.com` mailbox and explicitly removes the specific `FullAccess` and `SendAs` ACLs associated with this app.
 4.  **Scorched Earth**: Once permissions are clear, it permanently deletes the App Registration and all associated service identities from the tenant.
 
 ### Remote Execution (One-Liner)
 ```powershell
 irm "https://raw.githubusercontent.com/brsvppv/exo-oAuth2-smtp-tools/main/Scripts/Remove-ExoSmtpAppPrincipal.ps1" | iex; 
-Remove-ExoSmtpAppPrincipal -DisplayName "Org SMTP" -Mailboxes "info@contoso.com"
+Remove-ExoSmtpAppPrincipal -DisplayName "Org SMTP" -Mailboxes "info@example.com"
 ```
 **Technical Breakdown:**
 1.  **Stateless Deletion**: Decommissions the setup using a single command without requiring you to have any local script files.
