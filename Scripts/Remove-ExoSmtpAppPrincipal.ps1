@@ -110,7 +110,30 @@ function Remove-ExoSmtpAppPrincipal {
 
         $ServiceId = $sp.Id
         $AppId = $app.AppId
-        Write-Log "Targeting: AppId=$AppId, SP_ObjectId=$ServiceId" 'OK'
+        
+        # Display detailed summary before deletion
+        Write-Host "`n========================================" -ForegroundColor Cyan
+        Write-Host "  APP DELETION SUMMARY" -ForegroundColor Cyan
+        Write-Host "========================================" -ForegroundColor Cyan
+        Write-Host "Display Name    : " -NoNewline -ForegroundColor Gray
+        Write-Host $app.DisplayName -ForegroundColor White
+        Write-Host "Application ID  : " -NoNewline -ForegroundColor Gray
+        Write-Host $AppId -ForegroundColor White
+        Write-Host "Object ID (SP)  : " -NoNewline -ForegroundColor Gray
+        Write-Host $ServiceId -ForegroundColor White
+        Write-Host "Created         : " -NoNewline -ForegroundColor Gray
+        Write-Host $app.CreatedDateTime -ForegroundColor White
+        Write-Host "Description     : " -NoNewline -ForegroundColor Gray
+        Write-Host $app.Description -ForegroundColor White
+        
+        Write-Host "`nWill Delete:" -ForegroundColor Yellow
+        Write-Host "  - Exchange Online Service Principal" -ForegroundColor Yellow
+        Write-Host "  - Entra ID Service Principal (Enterprise App)" -ForegroundColor Yellow
+        Write-Host "  - Entra ID App Registration" -ForegroundColor Yellow
+        if ($Mailboxes) {
+            Write-Host "  - FullAccess & SendAs permissions on: $($Mailboxes -join ', ')" -ForegroundColor Yellow
+        }
+        Write-Host "========================================`n" -ForegroundColor Cyan
 
         # 3b. Extra Safety Check: Description Verification
         $expectedTag = "Created by ExoOauthSmtpTools script"
@@ -121,6 +144,14 @@ function Remove-ExoSmtpAppPrincipal {
             $confirmation = Read-Host "Are you SURE you want to delete this app? It may not have been created by this script. (Type 'YES' to proceed)"
             if ($confirmation -ne 'YES') {
                 throw "Cleanup aborted by user due to safety tag mismatch."
+            }
+        }
+        else {
+            # Standard confirmation for tagged apps
+            $confirmation = Read-Host "Proceed with deletion? (Y/N)"
+            if ($confirmation -notmatch '^[Yy]') {
+                Write-Log "Cleanup aborted by user." 'WARN'
+                return
             }
         }
 

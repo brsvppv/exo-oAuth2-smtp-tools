@@ -276,22 +276,28 @@ function New-ExoOauthSmtpAppIdentity {
         
         # Return Object
         $result = [PSCustomObject]@{
-            TenantName      = $TenantName
-            TenantId        = $TenantIdGuid
-            DefaultUPN      = ($org.VerifiedDomains | Where-Object IsDefault).Name
-            AppName         = $DisplayName
-            ClientId        = $ClientId
-            ServiceId       = $ServiceId
-            ClientSecret    = $ClientSecret
-            SmtpServer      = "smtp.office365.com"
-            SmtpPort        = 587
-            AuthMethod      = "OAuth 2.0"
-            Mailboxes       = $Mailboxes
-            Permissions     = if ($AddSendAs) { "FullAccess, SendAs" } else { "FullAccess" }
+            TenantName            = $TenantName
+            TenantId              = $TenantIdGuid
+            DefaultUPN            = ($org.VerifiedDomains | Where-Object IsDefault).Name
+            AppName               = $DisplayName
+            ClientId              = $ClientId
+            ServiceId             = $ServiceId
+            ClientSecret          = $ClientSecret
+            SmtpServer            = "smtp.office365.com"
+            SmtpPort              = 587
+            AuthMethod            = "OAuth 2.0"
+            Mailboxes             = $Mailboxes
+            Permissions           = if ($AddSendAs) { "FullAccess, SendAs" } else { "FullAccess" }
             
-            CleanupCommand  = "Remove-ExoSmtpAppPrincipal -ClientId `"$ClientId`" -Mailboxes `"$joinedMailboxes`""
-            TestCommand     = "Test-ExoOauthSmtpAppIdentity -ClientId `"$ClientId`" -Mailboxes `"$joinedMailboxes`""
-            MailTestCommand = "Invoke-ApiMailNotification -ClientId `"$ClientId`" -TenantID `"$TenantIdGuid`" -SecretValue `"$ClientSecret`" -From `"$($Mailboxes[0])`" -To `"receiver@example.com`" -Subject `"Test Email`" -Content `"Content`""
+            # Local commands (using dot-sourcing)
+            CleanupCommand        = ". .\Remove-ExoSmtpAppPrincipal.ps1; Remove-ExoSmtpAppPrincipal -ClientId `"$ClientId`" -Mailboxes `"$joinedMailboxes`""
+            TestCommand           = ". .\Test-ExoOauthSmtpAppIdentity.ps1; Test-ExoOauthSmtpAppIdentity -ClientId `"$ClientId`" -Mailboxes `"$joinedMailboxes`""
+            MailTestCommand       = ". .\Test-MailNotification.ps1; Send-SmtpOAuthTestMail -ClientId `"$ClientId`" -ClientSecret `"$ClientSecret`" -TenantId `"$TenantIdGuid`" -From `"$($Mailboxes[0])`" -To `"admin@example.com`""
+            
+            # Remote commands (using irm | iex)
+            CleanupCommandRemote  = "irm `"https://raw.githubusercontent.com/brsvppv/exo-oAuth2-smtp-tools/main/Scripts/Remove-ExoSmtpAppPrincipal.ps1`" | iex; Remove-ExoSmtpAppPrincipal -ClientId `"$ClientId`" -Mailboxes `"$joinedMailboxes`""
+            TestCommandRemote     = "irm `"https://raw.githubusercontent.com/brsvppv/exo-oAuth2-smtp-tools/main/Scripts/Test-ExoOauthSmtpAppIdentity.ps1`" | iex; Test-ExoOauthSmtpAppIdentity -ClientId `"$ClientId`" -Mailboxes `"$joinedMailboxes`""
+            MailTestCommandRemote = "irm `"https://raw.githubusercontent.com/brsvppv/exo-oAuth2-smtp-tools/main/Scripts/Test-MailNotification.ps1`" | iex; Send-SmtpOAuthTestMail -ClientId `"$ClientId`" -ClientSecret `"$ClientSecret`" -TenantId `"$TenantIdGuid`" -From `"$($Mailboxes[0])`" -To `"admin@example.com`""
         }
         
         Write-Log "Setup Complete." 'OK'
