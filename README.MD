@@ -6,17 +6,17 @@ This repository provides a production-grade PowerShell suite designed to automat
 
 ---
 
-## 🌟 Key Features
+##  Key Features
 
-*   **🛡️ Safety-First Approach**: Every App Registration is tagged with a unique description. The cleanup script verifies this tag before deletion to prevent accidental removal of mission-critical apps.
-*   **🔧 Infrastructure Auto-Fix**: Detects and remediates disabled `SmtpClientAuthentication` settings at both the Tenant and Mailbox levels.
-*   **📋 JSON Export**: Automatically save your provisioning results (Client ID, Secret, Tenant ID) to a secure JSON file for easy import into Business Central.
-*   **🌐 Remote-Ready**: Full support for in-memory execution via GitHub Raw URLs (no local script files required).
-*   **🔎 Precision Diagnostics**: Verification scripts that audit everything from Entra ID service principals to mailbox-level ACLs, including "Inherited" SMTP settings.
+*   **Safety-First Approach**: Every App Registration is tagged with a unique description. The cleanup script verifies this tag before deletion to prevent accidental removal of mission-critical apps.
+*   **Infrastructure Auto-Fix**: Detects and remediates disabled `SmtpClientAuthentication` settings at both the Tenant and Mailbox levels.
+*   **JSON Export**: Automatically save your provisioning results (Client ID, Secret, Tenant ID) to a secure JSON file for easy import into Business Central.
+*   **Remote-Ready**: Full support for in-memory execution via GitHub Raw URLs (no local script files required).
+*   **Precision Diagnostics**: Verification scripts that audit everything from Entra ID service principals to mailbox-level ACLs, including "Inherited" SMTP settings.
 
 ---
 
-## 📋 Prerequisites
+## Prerequisites
 
 Ensure you have the following PowerShell modules installed before running the scripts:
 
@@ -91,5 +91,5 @@ For detailed technical breakdowns, parameter lists, and advanced usage, see:
 
 ---
 
-## 🤝 Contributing & Safety
+## Contributing & Safety
 All changes are verified against [Pester](https://pester.dev/) unit tests.
