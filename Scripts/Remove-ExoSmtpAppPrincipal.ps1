@@ -1,5 +1,4 @@
-﻿
-function Remove-ExoSmtpAppPrincipal {
+﻿function Remove-ExoSmtpAppPrincipal {
     [CmdletBinding(SupportsShouldProcess)]
     param(
         [Parameter(Mandatory = $false)]
